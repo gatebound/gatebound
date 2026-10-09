@@ -28,7 +28,7 @@ import os
 import pathlib
 import re
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from gatebound import config, names, paths, verdict
 
@@ -390,6 +390,89 @@ def _trusted_hook_keys(text: str) -> List[str]:
     return _trusted_hook_keys_fallback(text)
 
 
+def _granted_hook_keys(text: str) -> List[str]:
+    """`hooks.state` keys whose entry records a grant: a `trusted_hash` and
+    not `enabled = false`. The 3.9/3.10 reader sees headers only and keeps
+    every key, as :func:`_trusted_hook_keys_fallback` documents."""
+    if tomllib is None:
+        return _trusted_hook_keys_fallback(text)
+    try:
+        data = tomllib.loads(text)
+    except (tomllib.TOMLDecodeError, ValueError):
+        return []
+    state = ((data.get("hooks") or {}).get("state") or {})
+    if not isinstance(state, dict):
+        return []
+    return [key for key, entry in state.items()
+            if isinstance(entry, dict) and entry.get("trusted_hash")
+            and entry.get("enabled") is not False]
+
+
+#: Hook events Codex runs, with the snake_case name its trust keys use. An
+#: event outside this map (PostToolUseFailure) is never offered for trust by
+#: Codex, so it is not counted as missing.
+CODEX_HOOK_EVENTS = {
+    "SessionStart": "session_start",
+    "UserPromptSubmit": "user_prompt_submit",
+    "PreToolUse": "pre_tool_use",
+    "PostToolUse": "post_tool_use",
+    "PreCompact": "pre_compact",
+    "SubagentStop": "subagent_stop",
+    "Stop": "stop",
+}
+
+
+def _codex_hook_suffixes(hook_file: pathlib.Path) -> List[str]:
+    """`<event>:<group>:<hook>` for every hook Codex would run from *hook_file*."""
+    try:
+        hooks = json.loads(hook_file.read_text(encoding="utf-8")).get("hooks") or {}
+    except (OSError, ValueError, AttributeError):
+        return []
+    out = []
+    for event, groups in hooks.items() if isinstance(hooks, dict) else []:
+        name = CODEX_HOOK_EVENTS.get(event)
+        if not name or not isinstance(groups, list):
+            continue
+        for gi, group in enumerate(groups):
+            inner = group.get("hooks") if isinstance(group, dict) else None
+            for hi, _hook in enumerate(inner if isinstance(inner, list) else []):
+                out.append("%s:%d:%d" % (name, gi, hi))
+    return out
+
+
+def codex_plugin_trust_counts() -> Optional[Tuple[int, int]]:
+    """``(trusted, expected)`` hooks of the installed gatebound Codex plugin.
+
+    ``None`` when no gatebound plugin is in Codex's cache. A hook counts when a
+    granted ``hooks.state`` key names it in either form Codex has used: the
+    cached ``hooks.json`` path, or the plugin id ``gatebound@gatebound:hooks/
+    hooks.json:<event>:<group>:<hook>`` (Codex 0.157, seen 2026-10-10). The
+    ``trusted_hash`` itself is not checked — how Codex computes it is not
+    documented — so trust given before an upgrade still counts here.
+    """
+    cache = codex_plugin_cache(names.CURRENT)
+    hook_files = sorted(cache.glob("*/hooks/hooks.json")) if cache.is_dir() else []
+    if not hook_files:
+        return None
+    current = max(hook_files, key=lambda p: p.stat().st_mtime)
+    expected = _codex_hook_suffixes(current)
+    try:
+        text = (_codex_home() / "config.toml").read_text(encoding="utf-8")
+    except OSError:
+        return (0, len(expected) or 1)
+    granted = set(_granted_hook_keys(text))
+    prefixes = ["%s@%s:hooks/hooks.json:" % (names.CURRENT, names.CURRENT)]
+    for hook_file in hook_files:
+        prefixes += [str(hook_file) + ":", str(hook_file.resolve()) + ":"]
+    if not expected:
+        return (1 if any(k.startswith(tuple(prefixes)) for k in granted) else 0, 1)
+    trusted = sum(1 for sfx in expected if any(p + sfx in granted for p in prefixes))
+    return (trusted, len(expected))
+
+
+
+
+
 def codex_hooks_trusted(root: pathlib.Path) -> bool:
     """True when Codex has recorded trust for *this project's* `.codex/hooks.json`.
 
@@ -433,26 +516,17 @@ def codex_cached_names() -> List[str]:
 
 
 def codex_plugin_trust() -> Optional[bool]:
-    """Whether Codex has recorded trust for an installed gatebound *plugin*.
+    """Whether every hook of the installed gatebound Codex plugin is trusted.
 
-    ADR-0019. ``None`` when no gatebound plugin is in Codex's plugin cache (the
-    question does not arise). Otherwise ``True`` when some ``hooks.state``
-    key names a ``hooks.json`` inside that cache, ``False`` when none does or
-    the config cannot be read — "could not tell" is not "trusted".
+    ADR-0019. ``None`` when no gatebound plugin is in Codex's cache; ``False``
+    when any hook Codex would run has no granted trust entry, or the config
+    cannot be read — "could not tell" is not "trusted". See
+    :func:`codex_plugin_trust_counts`.
     """
-    cache = codex_plugin_cache(names.CURRENT)
-    hook_files = sorted(cache.glob("*/hooks/hooks.json")) if cache.is_dir() else []
-    if not hook_files:
+    counts = codex_plugin_trust_counts()
+    if counts is None:
         return None
-    try:
-        text = (_codex_home() / "config.toml").read_text(encoding="utf-8")
-    except OSError:
-        return False
-    prefixes = []
-    for hook_file in hook_files:
-        prefixes.append(str(hook_file) + ":")
-        prefixes.append(str(hook_file.resolve()) + ":")
-    return any(key.startswith(tuple(prefixes)) for key in _trusted_hook_keys(text))
+    return counts[0] >= counts[1] > 0
 
 
 CODEX_PLUGIN_TRUST_FIX = (

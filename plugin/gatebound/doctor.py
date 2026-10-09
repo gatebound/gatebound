@@ -884,16 +884,17 @@ def axis_host_layer(root) -> dict:
     plugin_trust = hosts.codex_plugin_trust()
     result = hosts.status(root, "codex")
     if result["verdict"] != verdict.FAIL and plugin_trust is False:
-        return _axis(
-            "host layer",
-            verdict.WARN,
-            "codex plugin installed but its hooks are not trusted: no gate runs under Codex",
-            hosts.CODEX_PLUGIN_TRUST_FIX,
-        )
+        trusted, expected = hosts.codex_plugin_trust_counts() or (0, 0)
+        detail = ("codex plugin installed but its hooks are not trusted: no gate runs under Codex"
+                  if not trusted else
+                  "codex plugin hooks only partly trusted (%d of %d): the rest do not run under Codex"
+                  % (trusted, expected))
+        return _axis("host layer", verdict.WARN, detail, hosts.CODEX_PLUGIN_TRUST_FIX)
     if result["verdict"] == verdict.UNVERIFIED:
         detail = "no Codex host layer (Claude Code plugin serves this project)"
         if plugin_trust:
-            detail = "codex plugin hooks trusted; no per-project Codex host layer needed"
+            detail = ("codex plugin hooks trusted; no per-project Codex host layer needed "
+                      "(after an upgrade, if Codex lists them as changed, trust them again in /hooks)")
         return _axis("host layer", verdict.OK, detail, "")
     return _axis("host layer", result["verdict"], "codex: " + result["detail"], result.get("fix", ""))
 

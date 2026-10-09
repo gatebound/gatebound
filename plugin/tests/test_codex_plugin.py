@@ -132,5 +132,85 @@ class TestDoctorReportsCodexPluginTrust(unittest.TestCase):
         self.assertEqual(doctor.axis_host_layer(self.root)["verdict"], verdict.OK)
 
 
+    # Codex 0.157 records a plugin hook's trust under the plugin's id, not the
+    # cached hooks.json path (seen on the owner's Mac, 2026-10-10): doctor kept
+    # warning "not trusted" after the user had trusted every hook.
+    def trust_key(self, key: str) -> None:
+        self.write_config('[hooks.state.%s]\ntrusted_hash = "abc"\n' % json.dumps(key))
+
+    def test_plugin_id_key_is_trusted(self) -> None:
+        self.install_plugin()
+        self.trust_key("gatebound@gatebound:hooks/hooks.json:pre_tool_use:0:0")
+        self.assertTrue(hosts.codex_plugin_trust())
+        self.assertEqual(doctor.axis_host_layer(self.root)["verdict"], verdict.OK)
+
+    def test_plugin_id_from_another_marketplace_does_not_count(self) -> None:
+        # Only gatebound@gatebound is what Codex's cache/gatebound/gatebound holds.
+        self.install_plugin()
+        self.trust_key("gatebound@team-tools:hooks/hooks.json:stop:0:0")
+        self.assertFalse(hosts.codex_plugin_trust())
+
+    def test_another_plugins_id_is_not_trusted(self) -> None:
+        self.install_plugin()
+        for key in ("other@gatebound:hooks/hooks.json:stop:0:0",
+                    "gateboundx@gatebound:hooks/hooks.json:stop:0:0",
+                    "gatebound@gatebound:other/hooks.json:stop:0:0"):
+            self.trust_key(key)
+            self.assertFalse(hosts.codex_plugin_trust(), key)
+
+
+    # ADR-0040 review of the fix: every hook Codex runs must be trusted, not one.
+    HOOKS = {"hooks": {
+        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "a"}]},
+                       {"matcher": "Agent", "hooks": [{"type": "command", "command": "b"}]}],
+        "Stop": [{"hooks": [{"type": "command", "command": "c"}]}],
+        "PostToolUseFailure": [{"matcher": "Agent", "hooks": [{"type": "command", "command": "d"}]}],
+    }}
+    ALL = ("pre_tool_use:0:0", "pre_tool_use:1:0", "stop:0:0")
+
+    def install_real_hooks(self) -> pathlib.Path:
+        hooks = self.install_plugin()
+        hooks.write_text(json.dumps(self.HOOKS), encoding="utf-8")
+        return hooks
+
+    def trust(self, *suffixes: str, extra: str = "") -> None:
+        self.write_config("".join(
+            '[hooks.state.%s]\ntrusted_hash = "abc"\n%s\n'
+            % (json.dumps("gatebound@gatebound:hooks/hooks.json:" + sfx), extra) for sfx in suffixes))
+
+    def test_every_codex_hook_trusted_is_ok(self) -> None:
+        self.install_real_hooks()
+        self.trust(*self.ALL)
+        self.assertTrue(hosts.codex_plugin_trust())
+        result = doctor.axis_host_layer(self.root)
+        self.assertEqual(result["verdict"], verdict.OK)
+        self.assertIn("/hooks", result["detail"])  # says how to renew after an upgrade
+
+    def test_partial_trust_warns_with_counts(self) -> None:
+        self.install_real_hooks()
+        self.trust("stop:0:0")
+        self.assertFalse(hosts.codex_plugin_trust())
+        result = doctor.axis_host_layer(self.root)
+        self.assertEqual(result["verdict"], verdict.WARN)
+        self.assertIn("1 of 3", result["detail"])
+
+    def test_absolute_path_form_still_counts_per_hook(self) -> None:
+        hooks = self.install_real_hooks()
+        self.write_config("".join(
+            '[hooks.state.%s]\ntrusted_hash = "abc"\n\n' % json.dumps(str(hooks) + ":" + sfx)
+            for sfx in self.ALL))
+        self.assertTrue(hosts.codex_plugin_trust())
+
+    @unittest.skipIf(hosts.tomllib is None, "the 3.9/3.10 reader sees table headers only")
+    def test_entry_without_hash_or_disabled_is_not_trust(self) -> None:
+        self.install_real_hooks()
+        self.write_config(
+            '[hooks.state."gatebound@gatebound:hooks/hooks.json:pre_tool_use:0:0"]\nenabled = true\n\n'
+            '[hooks.state."gatebound@gatebound:hooks/hooks.json:pre_tool_use:1:0"]\n'
+            'trusted_hash = "abc"\nenabled = false\n\n'
+            '[hooks.state."gatebound@gatebound:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "abc"\n')
+        self.assertFalse(hosts.codex_plugin_trust())
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
