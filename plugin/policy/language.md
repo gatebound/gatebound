@@ -27,7 +27,10 @@ once it can be the other's.
 
 Everything the user reads:
 
-- chat replies
+- chat replies, including the short progress lines written between tool
+  calls during a long command ("installing dependencies", "round 2 passed") —
+  these drift into the language of the command text and tool output unless
+  kept in `output_lang` on purpose
 - headings and body text of files written under `spec/`
 - `AskUserQuestion` question text, option labels, and option descriptions
 - verdict explanations and error messages you surface

@@ -175,9 +175,17 @@ def latest_job_id(root) -> Optional[str]:
     return names[-1] if names else None
 
 
-def load_tasks(root) -> list:
-    """Parse ```gatebound-task fences out of spec/04-tasks.md."""
-    src = paths.spec_dir(root) / "04-tasks.md"
+def load_tasks(root, source=None) -> list:
+    """Parse ```gatebound-task fences out of spec/04-tasks.md, or out of
+    *source* (a draft task file) when given."""
+    if source:
+        src = pathlib.Path(source)
+        if not src.is_absolute():
+            src = pathlib.Path(root) / src
+        if not src.is_file():
+            raise ValueError("draft task file not found: %s" % source)
+    else:
+        src = paths.spec_dir(root) / "04-tasks.md"
     if not src.is_file():
         return []
     return spec.parse_fences(src.read_text(encoding="utf-8"), "gatebound-task")
@@ -1795,7 +1803,7 @@ def _dependency_depth(task_id: str, by_id: dict, unevidenced_pairs=(), _seen=())
     return max(depths) if depths else 0
 
 
-def shape(root, task_ids=None) -> dict:
+def shape(root, task_ids=None, source=None) -> dict:
     """How the task file would run: counts, waves, and unevidenced links.
 
     `/gatebound:tasks` shows this before writing `spec/04-tasks.md`, because
@@ -1805,13 +1813,14 @@ def shape(root, task_ids=None) -> dict:
     depth had disjoint write scopes: the serialisation was declared, not
     required.
     """
-    tasks = load_tasks(root)
+    tasks = load_tasks(root, source)
     if task_ids:
         wanted = {t.strip() for t in task_ids if t.strip()}
         tasks = [t for t in tasks if str(t.get("id")) in wanted]
     if not tasks:
         raise ValueError(
-            "no tasks found; expected ```gatebound-task fences in spec/04-tasks.md"
+            "no tasks found; expected ```gatebound-task fences in %s"
+            % (source or "spec/04-tasks.md")
         )
 
     by_id = {str(t.get("id")): t for t in tasks}
@@ -2479,6 +2488,10 @@ def _usage() -> str:
         "                         [--force-read-only-evaluator] [--json]\n"
         "                         Codex evaluator needs trusted project hooks\n"
         "                         for workspace-write; see ADR-0015\n"
+        "  shape [--file DRAFT.md] [--tasks id,id] [--json]\n"
+        "                         tasks, rounds and dependency links with no\n"
+        "                         evidence, of spec/04-tasks.md or of a draft\n"
+        "                         (/gatebound:tasks runs it before writing the file)\n"
         "  clean [--all]\n"
     )
 
@@ -2550,6 +2563,9 @@ def run(argv: list) -> int:
         sys.stdout.write(_usage())
         return 0 if argv else 1
     cmd, rest = argv[0], argv[1:]
+    if rest[:1] in (["--help"], ["-h"]):
+        sys.stdout.write(_usage())
+        return 0
     job_id = _opt(rest, "--job")
 
     try:
@@ -2589,7 +2605,8 @@ def run(argv: list) -> int:
 
         if cmd == "shape":
             info = shape(root, (_opt(rest, "--tasks") or "").split(",") or None
-                         if _opt(rest, "--tasks") else None)
+                         if _opt(rest, "--tasks") else None,
+                         source=_opt(rest, "--file"))
             if "--json" in rest:
                 print(json.dumps(info, indent=2, ensure_ascii=False))
             else:

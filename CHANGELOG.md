@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.2 — 2026-10-10
+
+Four smaller findings of the same timed build (none changes a verdict).
+
+### Fixed
+
+- **`jobs shape` can be found and run on a draft.** It was missing from
+  `jobs --help`, and it read only `spec/04-tasks.md`, while `/gatebound:tasks`
+  runs it on a draft before that file exists; the session concluded the
+  command did not exist and counted rounds by hand. It is listed now, takes
+  `--file <draft>`, and `/gatebound:tasks` gives the full command. Any
+  `jobs <sub> --help` prints the usage instead of running the subcommand.
+- **`spec validate` reads the language from the discovery record.** Right
+  after `/gatebound:discover`, with no `01-prd.md` yet, a Korean
+  `00-discovery.md` was judged as English and its headings reported as the
+  wrong language. The discovery record now decides until the PRD exists.
+- **Assumption markers count where the assumption is used.** Assumptions a
+  mockup adds are marked in `02-screens.md`, as the policy says; the ledger
+  check looked only in `01-prd.md` and warned about every such row (13
+  false warnings at every stage of the trial). A marker in `02-screens.md`,
+  `02-design.md` or `03-architecture.md` now marks its row.
+- **Progress lines follow the output language.** During the build the
+  short lines written between tool calls drifted into English while the
+  hook said `output_lang=ko`. The language policy and the build and verify
+  commands now name those lines.
+
 ## 0.17.1 — 2026-10-09
 
 Three defects found in a timed end-to-end build of a 16-feature app

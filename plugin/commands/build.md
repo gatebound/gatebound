@@ -26,7 +26,8 @@ three or more independent tasks.
 python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" lang --spec
 ```
 
-Every user-facing string below is written in `output_lang`.
+Every user-facing string below is written in `output_lang`, and so are the
+progress lines you write between tool calls while the build runs.
 
 ## Step 1 — preconditions (both must hold)
 

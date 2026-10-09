@@ -71,7 +71,8 @@ Stop hook deferred during the build (`"tier": "verify"`, or past
 
 ## Step 4 — report
 
-Report in `output_lang`, in this order:
+Report in `output_lang` — the progress lines you write between tool calls
+while the evaluator runs too, not only this report — in this order:
 
 1. The aggregate verdict (code criteria only — see the note below on why
    this cannot include `-visual` verdicts).

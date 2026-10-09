@@ -1,6 +1,6 @@
 {
   "name": "gatebound",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "Gate-enforced harness: interview → spec, mockup → spec, gated build, evidence-based verify.",
   "author": {
     "name": "Paul"

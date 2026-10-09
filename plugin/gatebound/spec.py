@@ -491,7 +491,16 @@ def _blocking_unconfirmed_rows(section: str) -> List[int]:
     return out
 
 
-def _check_ledger(text: str, lang: str) -> List[dict]:
+#: Spec files besides 01-prd.md where an assumption may be marked inline,
+#: "where it is used" (policy/assumptions.md): /gatebound:mockup records the
+#: screen assumptions it makes in 02-screens.md.
+LEDGER_MARKER_FILES = ("02-screens.md", "02-design.md", "03-architecture.md")
+
+
+def _check_ledger(text: str, lang: str, elsewhere: Optional[List[int]] = None) -> List[dict]:
+    """Inline markers in 01-prd.md against its ledger rows. *elsewhere* holds
+    the marker numbers found in :data:`LEDGER_MARKER_FILES`: a row they mark
+    is not an orphan (they are not checked for rows of their own)."""
     findings: List[dict] = []
     section = _ledger_section(text, lang)
     if section is None:
@@ -504,7 +513,7 @@ def _check_ledger(text: str, lang: str) -> List[dict]:
         findings.append(
             _finding("01-prd.md", V.FAIL, _msg(lang, "ledger_orphan_inline", num=num))
         )
-    for num in sorted(row_set - inline_set):
+    for num in sorted(row_set - inline_set - set(elsewhere or [])):
         findings.append(
             _finding("01-prd.md", V.WARN, _msg(lang, "ledger_orphan_row", num=num))
         )
@@ -1423,7 +1432,9 @@ def validate(root: pathlib.Path, lang: Optional[str] = None) -> dict:
 
     if lang is None:
         prd = contents.get("01-prd.md")
-        lang = lang_mod.detect(prd) if prd else "en"
+        # Before 01-prd.md exists (right after /gatebound:discover) the
+        # discovery record is the user's words; it decides, else English.
+        lang = lang_mod.detect(prd) if prd else (lang_mod.from_spec(root) or "en")
     if lang not in heading_map():
         lang = "en"
 
@@ -1464,7 +1475,11 @@ def validate(root: pathlib.Path, lang: Optional[str] = None) -> dict:
 
     prd = contents.get("01-prd.md")
     if prd is not None:
-        findings.extend(_check_ledger(prd, lang))
+        elsewhere: List[int] = []
+        for name in LEDGER_MARKER_FILES:
+            # Already read (or recorded as unreadable) by the loop above.
+            elsewhere.extend(_inline_assumption_numbers(contents.get(name) or ""))
+        findings.extend(_check_ledger(prd, lang, elsewhere))
 
     screens_text = contents.get("02-screens.md")
     findings.extend(_check_screens_required(prd, screens_text, lang))

@@ -54,6 +54,11 @@ def _stub_paths() -> types.ModuleType:
 def _stub_lang() -> types.ModuleType:
     mod = types.ModuleType("gatebound.lang")
 
+    def from_spec(root):
+        return None
+
+    mod.from_spec = from_spec
+
     def detect(text: str) -> str:
         if not text:
             return "en"

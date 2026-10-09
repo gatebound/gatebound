@@ -112,10 +112,10 @@ that renders a screen.
 
 ## Step 5 — show the shape, then write spec/04-tasks.md
 
-Write the fences to a scratch copy, run `jobs shape`, and present its counts,
-rounds, and unevidenced links with the round total dropping them would save. One
-`AskUserQuestion` — write as shown, merge tasks, or loosen dependencies — skipped
-after a stop signal.
+Write the fences to a draft file outside `spec/`, run `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" jobs shape --file <draft>`,
+and present its counts, rounds, and unevidenced links with the round total dropping
+them would save. One `AskUserQuestion` — write as shown, merge tasks, or loosen
+dependencies — skipped after a stop signal.
 
 Then fill the template, including its YAML frontmatter block (`title`/`date`/
 `status`) at the top, headings verbatim from the heading map. Each task is one

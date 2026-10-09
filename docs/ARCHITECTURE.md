@@ -1025,7 +1025,7 @@ which is the normal case rather than a mistake: a gate names files and commands
 that do not exist until the work is done. Tasks no longer in the file are
 returned in `missing`, never silently skipped.
 
-**ADR-0013 decision 4 — the shape is approved before it is written.** `jobs.shape(root)` reports `{tasks, rounds, waves, serial, unevidenced, rounds_if_pruned}` from `spec/04-tasks.md`, and `/gatebound:tasks` shows it — rounds as prominently as the count — before writing the file. A `depends_on` is evidenced when the depending task's title or instruction names the dependency's id or a leaf from its write scope, matched on identifier boundaries so a short id is not found inside a word and a shared ancestor like `src` never counts. `rounds_if_pruned` recomputes depth from the evidenced links alone, ignoring the declared `round`, since that field is a consequence of the links. Advisory only: deciding whether an instruction *needs* a dependency requires understanding both, so nothing refuses. On gk-trial2 this reports 9 tasks / 7 rounds with three unevidenced links and 3 rounds without them.
+**ADR-0013 decision 4 — the shape is approved before it is written.** `jobs.shape(root)` reports `{tasks, rounds, waves, serial, unevidenced, rounds_if_pruned}` from `spec/04-tasks.md`, or from a draft passed as `jobs shape --file <draft>` (the form `/gatebound:tasks` runs, since the file does not exist yet), and `/gatebound:tasks` shows it — rounds as prominently as the count — before writing the file. A `depends_on` is evidenced when the depending task's title or instruction names the dependency's id or a leaf from its write scope, matched on identifier boundaries so a short id is not found inside a word and a shared ancestor like `src` never counts. `rounds_if_pruned` recomputes depth from the evidenced links alone, ignoring the declared `round`, since that field is a consequence of the links. Advisory only: deciding whether an instruction *needs* a dependency requires understanding both, so nothing refuses. On gk-trial2 this reports 9 tasks / 7 rounds with three unevidenced links and 3 rounds without them.
 
 **ADR-0013 decision 5 — a verification task is not a task.** `spec.validate` warns when a task's `write_scope` holds only test material (a path segment in `_TEST_DIR_SEGMENTS`, or a test-runner config stem) **and** its transitive dependency reach is ≥ 2. A check that passes only once several tasks are done is a completion criterion in `05-gate.md`: as a task it fails on every attempt until the last dependency lands. Reach is transitive because a chain end names one dependency and waits on all of them — the real `e2e-full-flow` declared one and waited on seven. A `warn`, never a `fail`: a legitimate test-only task exists.
 
@@ -1493,12 +1493,12 @@ def program_owner(program, root, tasks) -> tuple       # (relpath, owner) for a 
 def dependency_program(program, root, tasks) -> dict | None   # {"path", "dir", "manifest", "owner"} for a program under node_modules/.venv/venv
 
 # spec.py
-def validate(root: pathlib.Path, lang: str | None = None) -> dict      # {"verdict", "findings":[{"file","verdict","message"}], "lang"}
+def validate(root: pathlib.Path, lang: str | None = None) -> dict      # {"verdict", "findings":[{"file","verdict","message"}], "lang"}; lang from 01-prd.md, else lang.from_spec (00-discovery.md), else en; a ledger row is marked when 01-prd.md or LEDGER_MARKER_FILES (02-screens, 02-design, 03-architecture) carry its inline marker
 def parse_fences(text: str, name: str) -> list[dict]                   # all ```<name> JSON fences
 def run(argv: list[str]) -> int
 
 # jobs.py
-def run(argv: list[str]) -> int                        # start / status / wait / results / complete / recheck / redelegate / stop / evaluate / clean
+def run(argv: list[str]) -> int                        # start / status / wait / results / complete / recheck / redelegate / stop / evaluate / shape / clean; `<sub> --help` prints the usage
 def start(root, task_ids=None, backend_name=None, parallel=None, dry_run=False, no_preflight=False) -> dict   # raises GatePreflightError (ADR-0009)
 def preflight(root, jdir, tasks: list[dict]) -> dict   # {"passed": [ids], "warnings": [str], "notices": [str]}; raises GatePreflightError
 def classify_gate_result(gate: dict, argv=None, root=None, tasks=None) -> str  # "command_error" | "not_yet_runnable" | "suspicious" | "expected" (ADR-0009, ADR-0022)
@@ -1513,7 +1513,7 @@ def complete_task(root, task_id: str, job_id: str | None = None) -> dict   # hos
 def recheck(root, task_ids=None, job_id: str | None = None) -> dict        # {"job_id","rechecked","missing"}; gates only, no worker
 def note_grading(root, jdir, task_id: str, gates: dict, passed: bool) -> list    # ADR-0023: attempts.json failed_grading -> status.json grading_changed_after_failure, returns the latter
 def all_job_ids(root) -> list                          # every job id, oldest first (`status --all`)
-def shape(root, task_ids=None) -> dict                 # {tasks, rounds, waves, serial, unevidenced, rounds_if_pruned} (ADR-0013)
+def shape(root, task_ids=None, source=None) -> dict                 # {tasks, rounds, waves, serial, unevidenced, rounds_if_pruned} (ADR-0013)
 def record_attempt(root, task_id: str, state: str, job_id="", gate="", gates=None) -> int   # ADR-0014; gates -> fingerprint (ADR-0021)
 def normalize_gate_output(text: str, root=None) -> str   # strips volatile tokens only (ADR-0021)
 def failure_fingerprint(gates: dict, root=None) -> str | None   # sha256 of failing gates (cut tails drop their first line), None without evidence (ADR-0021)
