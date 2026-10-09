@@ -1,0 +1,571 @@
+"""Tests for gates/bash.py — shell-level writes obey the same rules as Write."""
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import shlex
+import subprocess
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from gatebound import approval, ledger  # noqa: E402
+from gatebound.gates import bash as bash_gate  # noqa: E402
+
+GATE_SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "gatebound" / "gates" / "bash.py"
+
+
+def targets_of(command: str, cwd: str = ".") -> "tuple[list[str], bool]":
+    result = bash_gate.extract_write_targets(command, cwd)
+    return sorted(result.targets), result.opaque
+
+
+class TestExtractRedirects(unittest.TestCase):
+    def test_truncating_redirect(self) -> None:
+        self.assertEqual(targets_of("cat > src/x.ts"), (["src/x.ts"], False))
+
+    def test_appending_redirect(self) -> None:
+        self.assertEqual(targets_of("echo hi >> notes.txt"), (["notes.txt"], False))
+
+    def test_bare_truncation(self) -> None:
+        self.assertEqual(targets_of("> x.ts"), (["x.ts"], False))
+
+    def test_clobber_and_ampersand_forms(self) -> None:
+        self.assertEqual(targets_of("cmd >| a; cmd &> b; cmd &>> c"), (["a", "b", "c"], False))
+
+    def test_stderr_redirect_is_a_write(self) -> None:
+        self.assertEqual(targets_of("cmd 2>errors.log"), (["errors.log"], False))
+
+    def test_fd_dup_and_dev_null_are_not_writes(self) -> None:
+        self.assertEqual(targets_of("ls > /dev/null 2>&1"), ([], False))
+
+    def test_fd_number_is_not_mistaken_for_an_argument(self) -> None:
+        self.assertEqual(targets_of("cp a b 2>err.log"), (["b", "err.log"], False))
+
+    def test_process_substitution_is_opaque(self) -> None:
+        self.assertTrue(targets_of("cat > >(gzip)")[1])
+
+    def test_quoted_angle_bracket_is_not_a_redirect(self) -> None:
+        self.assertEqual(targets_of('git commit -m "a > b"'), ([], False))
+
+    def test_input_redirects_ignored(self) -> None:
+        self.assertEqual(targets_of("sort < in.txt | head"), ([], False))
+
+    def test_heredoc_body_is_not_parsed(self) -> None:
+        cmd = "cat > x.ts <<'EOF'\nfoo > bar\ncd elsewhere\nEOF"
+        self.assertEqual(targets_of(cmd), (["x.ts"], False))
+
+    def test_heredoc_without_redirect_writes_nothing(self) -> None:
+        self.assertEqual(targets_of("cat <<EOF\nhello > world\nEOF"), ([], False))
+
+
+class TestExtractCommands(unittest.TestCase):
+    def test_tee(self) -> None:
+        self.assertEqual(targets_of("make | tee -a build.log"), (["build.log"], False))
+        self.assertEqual(targets_of("cmd | tee a b"), (["a", "b"], False))
+
+    def test_sed_in_place(self) -> None:
+        self.assertEqual(targets_of("sed -i 's/a/b/' src/x.ts"), (["src/x.ts"], False))
+        self.assertEqual(
+            targets_of("sed -i.bak -e 's/a/b/' a.ts b.ts"), (["a.ts", "b.ts"], False)
+        )
+        self.assertEqual(targets_of("sed --in-place=.orig 's/a/b/' c.ts"), (["c.ts"], False))
+
+    def test_sed_without_in_place_is_read_only(self) -> None:
+        self.assertEqual(targets_of("sed -n 's/a/b/p' x.ts"), ([], False))
+
+    def test_perl_in_place(self) -> None:
+        self.assertEqual(targets_of("perl -pi -e 's/a/b/' x.ts"), (["x.ts"], False))
+
+    def test_perl_inline_without_in_place_is_opaque(self) -> None:
+        self.assertTrue(targets_of("perl -e 'open(F, \">x\")'")[1])
+
+    def test_copy_move_link_install_rsync_destination(self) -> None:
+        self.assertEqual(targets_of("cp -r a.ts b.ts"), (["b.ts"], False))
+        self.assertEqual(targets_of("mv a b c/"), (["c"], False))
+        self.assertEqual(targets_of("ln -s a b"), (["b"], False))
+        self.assertEqual(targets_of("install -m 644 a b"), (["b"], False))
+        self.assertEqual(targets_of("rsync -a src/ dest/"), (["dest"], False))
+
+    def test_touch_rm_mkdir_truncate(self) -> None:
+        self.assertEqual(targets_of("touch a b"), (["a", "b"], False))
+        self.assertEqual(targets_of("rm -rf build/"), (["build"], False))
+        self.assertEqual(targets_of("mkdir -p x/y"), (["x/y"], False))
+        self.assertEqual(targets_of("truncate -s 0 x"), (["x"], False))
+
+    def test_dd_output_file(self) -> None:
+        self.assertEqual(targets_of("dd if=/dev/zero of=img.bin bs=1m"), (["img.bin"], False))
+
+    def test_git_working_tree_mutations_are_opaque(self) -> None:
+        for cmd in ("git apply p.diff", "git checkout -- src/x.ts", "git stash pop", "git reset --hard"):
+            self.assertTrue(targets_of(cmd)[1], cmd)
+
+    def test_git_metadata_commands_are_fine(self) -> None:
+        for cmd in ("git status", "git add -A", "git commit -m x", "git diff", "git log"):
+            self.assertEqual(targets_of(cmd), ([], False), cmd)
+
+    def test_patch_is_opaque(self) -> None:
+        self.assertTrue(targets_of("patch -p1 < x.diff")[1])
+
+    def test_inline_interpreter_code_is_opaque(self) -> None:
+        for cmd in (
+            "python3 -c \"open('x','w')\"",
+            "node -e 'require(\"fs\").writeFileSync(\"x\",\"\")'",
+            "python3 - <<EOF\nprint(1)\nEOF",
+            "ruby -e 'File.write(\"x\", \"\")'",
+        ):
+            self.assertTrue(targets_of(cmd)[1], cmd)
+
+    def test_running_a_script_file_is_not_flagged(self) -> None:
+        self.assertEqual(targets_of("python3 -m unittest discover"), ([], False))
+        self.assertEqual(targets_of("node scripts/build.js"), ([], False))
+
+    def test_eval_xargs_find_exec_are_opaque(self) -> None:
+        for cmd in ('eval "$cmd"', "ls | xargs rm", "find . -name '*.o' -exec rm {} \;", "find . -delete"):
+            self.assertTrue(targets_of(cmd)[1], cmd)
+
+    def test_git_init_and_clone_are_opaque(self) -> None:
+        self.assertTrue(targets_of("git init src/new")[1])
+        self.assertTrue(targets_of("git clone https://x/y src/clone")[1])
+
+    def test_output_flag_programs(self) -> None:
+        self.assertEqual(targets_of("sort -o src/x.ts a.txt"), (["src/x.ts"], False))
+        self.assertEqual(targets_of("sort --output=src/x.ts a.txt"), (["src/x.ts"], False))
+        self.assertEqual(targets_of("curl -o src/x.ts https://x"), (["src/x.ts"], False))
+        self.assertEqual(targets_of("curl https://x --output src/x.ts"), (["src/x.ts"], False))
+        self.assertEqual(targets_of("curl -osrc/x.ts https://x"), (["src/x.ts"], False))
+        self.assertEqual(targets_of("wget -O src/x.ts https://x"), (["src/x.ts"], False))
+
+    def test_remote_name_downloads_are_opaque(self) -> None:
+        self.assertTrue(targets_of("curl -O https://x/y.ts")[1])
+        self.assertTrue(targets_of("wget https://x/y.ts")[1])
+        self.assertEqual(targets_of("wget --spider https://x"), ([], False))
+        self.assertEqual(targets_of("curl -s https://x | head"), ([], False))
+
+    def test_archives(self) -> None:
+        self.assertEqual(targets_of("tar -xf p.tar -C src"), (["src"], False))
+        self.assertEqual(targets_of("tar xzf p.tgz"), (["."], False))
+        self.assertEqual(targets_of("tar -czf out.tgz src"), (["out.tgz"], False))
+        self.assertEqual(targets_of("tar -tf p.tar"), ([], False))
+        self.assertEqual(targets_of("unzip pkg.zip -d src"), (["src"], False))
+        self.assertEqual(targets_of("unzip pkg.zip"), (["."], False))
+        self.assertEqual(targets_of("unzip -l pkg.zip"), ([], False))
+        self.assertEqual(targets_of("zip src/out.zip a.txt"), (["src/out.zip"], False))
+
+    def test_editors_awk_busybox_trap_are_opaque(self) -> None:
+        for cmd in (
+            "awk 'BEGIN{print \"x\" > \"src/x.ts\"}' /dev/null",
+            "ed src/x.ts",
+            "ex -s -c 'wq src/x.ts'",
+            "vim -Es -c 'w src/x.ts'",
+            "busybox sh -c 'cat > src/x.ts'",
+            "trap 'echo hi > src/x.ts' EXIT; true",
+        ):
+            self.assertTrue(targets_of(cmd)[1], cmd)
+
+    def test_sed_empty_in_place_suffix_skips_script(self) -> None:
+        self.assertEqual(targets_of("sed -i '' s/a/b/ src/x.ts"), (["src/x.ts"], False))
+
+    def test_perl_option_cluster_consumes_script(self) -> None:
+        self.assertEqual(targets_of("perl -i -pe 's/a/b/' src/x.ts"), (["src/x.ts"], False))
+        self.assertEqual(targets_of("perl -pie 's/a/b/' src/x.ts"), (["src/x.ts"], False))
+
+    def test_plain_find_is_fine(self) -> None:
+        self.assertEqual(targets_of("find . -name '*.ts'"), ([], False))
+
+    def test_nested_shell_is_recursed(self) -> None:
+        self.assertEqual(targets_of('bash -c "cat > x"'), (["x"], False))
+        self.assertEqual(targets_of("sh -c 'cd src && cat > y'"), (["src/y"], False))
+
+    def test_wrappers_are_stripped(self) -> None:
+        self.assertEqual(targets_of("sudo tee /etc/hosts"), (["/etc/hosts"], False))
+        self.assertEqual(targets_of("env FOO=1 cat > x"), (["x"], False))
+        self.assertEqual(targets_of("FOO=1 BAR=2 cat > x"), (["x"], False))
+        self.assertEqual(targets_of("nohup cat > x"), (["x"], False))
+
+
+class TestExtractCwd(unittest.TestCase):
+    def test_cd_then_write(self) -> None:
+        self.assertEqual(targets_of("cd src && cat > x.ts"), (["src/x.ts"], False))
+
+    def test_newline_separated_commands(self) -> None:
+        self.assertEqual(targets_of("cd src\ncat > x.ts"), (["src/x.ts"], False))
+
+    def test_cd_up_is_normalized(self) -> None:
+        self.assertEqual(targets_of("cd src/auth && cat > ../other.ts"), (["src/other.ts"], False))
+
+    def test_cd_to_variable_makes_relative_writes_opaque(self) -> None:
+        self.assertTrue(targets_of("cd $DIR && cat > x.ts")[1])
+
+    def test_cd_to_variable_then_absolute_write_is_fine(self) -> None:
+        self.assertEqual(targets_of("cd $DIR && cat > /tmp/x")[0], ["/tmp/x"])
+
+    def test_variable_in_target_is_opaque(self) -> None:
+        self.assertTrue(targets_of('cat > "$HOME/x"')[1])
+        self.assertTrue(targets_of("cat > `mktemp`")[1])
+
+    def test_tilde_is_expanded(self) -> None:
+        targets, opaque = targets_of("cat > ~/x")
+        self.assertFalse(opaque)
+        self.assertEqual(targets, [os.path.expanduser("~/x")])
+
+    def test_unbalanced_quote_is_opaque(self) -> None:
+        self.assertTrue(targets_of('echo "abc')[1])
+
+    def test_absolute_cwd(self) -> None:
+        self.assertEqual(targets_of("cat > x", "/proj")[0], ["/proj/x"])
+
+
+def run_gate_subprocess(event: dict, env_extra: "dict | None" = None, raw: "str | None" = None):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GATEBOUND_")}
+    env.pop("PYTHONPATH", None)
+    env.update(env_extra or {})
+    proc = subprocess.run(
+        [sys.executable, str(GATE_SCRIPT)],
+        input=raw if raw is not None else json.dumps(event),
+        capture_output=True,
+        text=True, encoding="utf-8",
+        env=env,
+        timeout=30,
+    )
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+class BashGateProject(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        (self.root / ".gatebound").mkdir()
+        (self.root / "spec").mkdir()
+        self.gate_md = self.root / "spec" / "05-gate.md"
+        self.gate_md.write_text("# Gate\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        for key in list(os.environ):
+            if key.startswith("GATEBOUND_"):
+                del os.environ[key]
+        self._tmp.cleanup()
+
+    def event(self, command: str, cwd: "str | None" = None, tool: str = "Bash") -> dict:
+        return {
+            "session_id": "sess-bash",
+            "hook_event_name": "PreToolUse",
+            "cwd": cwd or str(self.root),
+            "tool_name": tool,
+            "tool_input": {"command": command},
+        }
+
+    def approve(self) -> None:
+        approval.approve(self.root, "spec/05-gate.md")
+
+    def reason(self, result: dict) -> str:
+        return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+class TestSpecBeforeCode(BashGateProject):
+    def test_denies_redirect_into_code_before_approval(self) -> None:
+        result = bash_gate.handle(self.event("cat > src/x.ts"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("src/x.ts", self.reason(result))
+
+    def test_denies_sed_in_place_before_approval(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("sed -i 's/a/b/' src/x.ts")))
+
+    def test_allows_spec_and_docs_targets(self) -> None:
+        self.assertIsNone(bash_gate.handle(self.event("cat > spec/01-prd.md")))
+        self.assertIsNone(bash_gate.handle(self.event("cat > docs/notes.md")))
+        self.assertIsNone(bash_gate.handle(self.event("tee README.md")))
+
+    def test_allows_after_approval(self) -> None:
+        self.approve()
+        self.assertIsNone(bash_gate.handle(self.event("cat > src/x.ts")))
+
+    def test_allows_when_no_spec_dir(self) -> None:
+        (self.gate_md).unlink()
+        (self.root / "spec").rmdir()
+        self.assertIsNone(bash_gate.handle(self.event("cat > src/x.ts")))
+
+    def test_read_only_commands_always_allowed(self) -> None:
+        self.assertIsNone(bash_gate.handle(self.event("ls -la src | grep ts > /dev/null")))
+        self.assertIsNone(bash_gate.handle(self.event("git status && cat src/x.ts")))
+
+    def test_write_outside_project_root_allowed_before_approval(self) -> None:
+        # ADR-0018 decision 3: another folder is not this project's code.
+        # The temp path is quoted: a temp directory with a space in its name
+        # ("임시 폴더" on the Windows CI job) otherwise splits into two words,
+        # the second a relative path inside the project, and is rightly denied.
+        with tempfile.TemporaryDirectory() as other:
+            target = shlex.quote(os.path.realpath(other))
+            self.assertIsNone(bash_gate.handle(self.event(f"mkdir -p {target}/app && cp spec/01-prd.md {target}/app/")))
+            self.assertIsNone(bash_gate.handle(self.event(f"cat > {target}/scratch.js")))
+
+    def test_mixed_inside_and_outside_still_judges_inside(self) -> None:
+        with tempfile.TemporaryDirectory() as other:
+            target = shlex.quote(os.path.realpath(other))
+            result = bash_gate.handle(self.event(f"cat > {target}/a.js && cat > src/x.ts"))
+            self.assertIsNotNone(result)
+            self.assertIn("src/x.ts", self.reason(result))
+
+    def test_opaque_write_denied_before_approval(self) -> None:
+        for cmd in ("git apply p.diff", "python3 -c \"open('x','w')\"", 'eval "$c"'):
+            result = bash_gate.handle(self.event(cmd))
+            self.assertIsNotNone(result, cmd)
+            self.assertIn("cannot determine", self.reason(result))
+
+    def test_opaque_write_allowed_after_approval(self) -> None:
+        self.approve()
+        self.assertIsNone(bash_gate.handle(self.event("git apply p.diff")))
+
+    def test_relative_cd_inside_command(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("cd src && cat > x.ts")))
+        self.assertIsNone(bash_gate.handle(self.event("cd spec && cat > 01-prd.md")))
+
+    def test_cwd_from_event_is_honoured(self) -> None:
+        (self.root / "src").mkdir()
+        result = bash_gate.handle(self.event("cat > x.ts", cwd=str(self.root / "src")))
+        self.assertIsNotNone(result)
+
+    def test_reason_in_korean_when_session_is_ko(self) -> None:
+        led = ledger.Ledger.load(self.root, "sess-bash")
+        led.set_output_lang("ko")
+        led.save()
+        result = bash_gate.handle(self.event("cat > src/x.ts"))
+        self.assertIn("승인", self.reason(result))
+        opaque = bash_gate.handle(self.event("git apply p.diff"))
+        self.assertIn("파일", self.reason(opaque))
+
+    def test_non_bash_tool_is_ignored(self) -> None:
+        self.assertIsNone(bash_gate.handle(self.event("cat > src/x.ts", tool="Read")))
+
+    def test_missing_command_is_allowed(self) -> None:
+        event = self.event("")
+        event["tool_input"] = {}
+        self.assertIsNone(bash_gate.handle(event))
+
+
+class TestTaskScope(BashGateProject):
+    def setUp(self) -> None:
+        super().setUp()
+        self.approve()
+        task_dir = self.root / ".gatebound" / "jobs" / "job-1" / "tasks" / "auth"
+        task_dir.mkdir(parents=True)
+        self.task_json = task_dir / "task.json"
+        self.task_json.write_text(json.dumps({"id": "auth", "write_scope": ["src/auth/**"]}))
+        os.environ["GATEBOUND_TASK_ID"] = "auth"
+        os.environ["GATEBOUND_JOB_ID"] = "job-1"
+
+    def test_write_inside_scope_allowed(self) -> None:
+        self.assertIsNone(bash_gate.handle(self.event("cat > src/auth/token.ts")))
+
+    def test_write_outside_scope_denied(self) -> None:
+        result = bash_gate.handle(self.event("cat > src/other.ts"))
+        self.assertIsNotNone(result)
+        self.assertIn("src/auth/**", self.reason(result))
+
+    def test_escape_via_cd_denied(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("cd src/auth && cat > ../other.ts")))
+
+    def test_second_command_in_chain_is_checked(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("cat > src/auth/a.ts && cat > spec/01-prd.md")))
+
+    def test_opaque_denied_for_scoped_worker(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("git checkout -- src/auth/a.ts")))
+
+    def test_read_only_task_denies_any_write_but_allows_reads(self) -> None:
+        self.task_json.write_text(json.dumps({"id": "auth", "write_scope": "read-only"}))
+        self.assertIsNotNone(bash_gate.handle(self.event("cat > src/auth/token.ts")))
+        self.assertIsNone(bash_gate.handle(self.event("cat src/auth/token.ts | wc -l")))
+
+    def test_outside_root_denied(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("cat > /tmp/escape.ts")))
+
+
+class TestEvaluatorScratch(BashGateProject):
+    """ADR-0026 (0.16.2): the evaluator's Bash may write `.gatebound/eval/**`."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.approve()
+        edir = self.root / ".gatebound" / "jobs" / "job-eval" / "evaluate"
+        edir.mkdir(parents=True)
+        (edir / "task.json").write_text(
+            json.dumps({"id": "evaluate", "write_scope": "read-only"}))
+        os.environ["GATEBOUND_TASK_ID"] = "evaluate"
+        os.environ["GATEBOUND_JOB_ID"] = "job-eval"
+
+    def test_scratch_writes_allowed(self) -> None:
+        self.assertIsNone(bash_gate.handle(self.event(
+            "mkdir -p .gatebound/eval && npx playwright test > .gatebound/eval/run.log 2>&1")))
+        self.assertIsNone(bash_gate.handle(self.event("cat > .gatebound/eval/drive.mjs")))
+
+    def test_other_writes_denied(self) -> None:
+        self.assertIsNotNone(bash_gate.handle(self.event("echo x > .gatebound/approvals.json")))
+        self.assertIsNotNone(bash_gate.handle(self.event("cat > src/app.ts")))
+        self.assertIsNotNone(bash_gate.handle(self.event("mkdir -p /tmp/gkeval")))
+        self.assertIsNotNone(bash_gate.handle(
+            self.event("cat > .gatebound/eval/a && cat > src/app.ts")))
+
+    def test_other_task_ids_unaffected(self) -> None:
+        task_dir = self.root / ".gatebound" / "jobs" / "job-eval" / "tasks" / "auth"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.json").write_text(json.dumps({"id": "auth", "write_scope": "read-only"}))
+        os.environ["GATEBOUND_TASK_ID"] = "auth"
+        self.assertIsNotNone(bash_gate.handle(self.event("cat > .gatebound/eval/x")))
+
+
+class TestWorkerNeverApproves(BashGateProject):
+    """ADR-0023: inside a worker session no command may run ``gatebound approve``."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.approve()
+        os.environ["GATEBOUND_TASK_ID"] = "auth"
+        os.environ["GATEBOUND_JOB_ID"] = "job-1"
+
+    def assert_denied(self, command: str) -> None:
+        result = bash_gate.handle(self.event(command))
+        self.assertIsNotNone(result, command)
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny", command)
+        self.assertIn("approve", self.reason(result))
+
+    def assert_not_approval_denied(self, command: str) -> None:
+        result = bash_gate.handle(self.event(command))
+        if result is not None:
+            self.assertNotIn("never approves", self.reason(result), command)
+
+    def test_env_unset_bypass_is_denied(self) -> None:
+        self.assert_denied(
+            "env -u GATEBOUND_TASK_ID python3 /opt/gk/plugin/bin/gatebound.py approve spec/05-gate.md")
+
+    def test_plain_and_plugin_root_forms_are_denied(self) -> None:
+        self.assert_denied("python3 ${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py approve spec/05-gate.md")
+        self.assert_denied('python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" approve spec/05-gate.md')
+        self.assert_denied("'/path with space/bin/gatebound.py' approve spec/05-gate.md")
+        self.assert_denied("GATEBOUND_TASK_ID= ./bin/gatebound.py approve --note x spec/05-gate.md")
+        self.assert_denied("python3 -m gatebound approve spec/05-gate.md")
+        self.assert_denied("env -u GATEBOUND_TASK_ID gatebound approve spec/05-gate.md")
+
+    def test_hidden_in_chains_and_nested_shells_is_denied(self) -> None:
+        self.assert_denied("ls && python3 bin/gatebound.py approve spec/05-gate.md")
+        self.assert_denied("bash -c 'python3 bin/gatebound.py approve spec/05-gate.md'")
+        self.assert_denied("eval \"python3 bin/gatebound.py approve spec/05-gate.md\"")
+        self.assert_denied("python3 bin/gatebound.py approve --root . spec/05-gate.md")
+        self.assert_denied("echo spec/05-gate.md | xargs python3 bin/gatebound.py approve")
+        self.assertTrue(bash_gate.invokes_gatebound_approve(
+            "python3 bin/gatebound.py approve 'spec/05-gate.md"))  # unlexable: pattern fallback
+
+    def test_module_forms_are_denied(self) -> None:
+        # The approval module and the CLI module approve too (ADR-0028 integration
+        # with ADR-0029): both names, both module spellings.
+        for command in ("python3 -m gatebound.approval spec/05-gate.md",
+                        "python -m gatebound.cli approve spec/05-gate.md",
+                        "python3 -m gatebound.__main__ approve spec/05-gate.md",
+                        "python3 -mgatebound.approval spec/05-gate.md",
+                        "python3 -m gatekit.approval spec/05-gate.md",
+                        "python3 -m gatekit.cli approve spec/05-gate.md",
+                        "env -u GATEBOUND_TASK_ID python3 -m gatebound.approval --note x spec/05-gate.md",
+                        "bash -c 'python3 -m gatebound.approval spec/05-gate.md'",
+                        "python3 -m gatebound.approval 'spec/05-gate.md"):  # unlexable
+            with self.subTest(command=command):
+                self.assertTrue(bash_gate.invokes_gatebound_approve(command), command)
+        self.assert_denied("python3 -m gatebound.approval spec/05-gate.md")
+        self.assert_denied("python -m gatekit.cli approve spec/05-gate.md")
+
+    def test_module_check_and_list_are_allowed(self) -> None:
+        for command in ("python3 -m gatebound.approval check spec/05-gate.md",
+                        "python3 -m gatebound.approval list",
+                        "python3 -m gatekit.approval --root . check spec/05-gate.md",
+                        "python -m gatebound.cli approve check spec/05-gate.md",
+                        "python -m gatekit.cli approve list",
+                        "python3 -m gatebound.cli jobs status",
+                        "python3 -m gatebound.approvals spec/05-gate.md"):
+            with self.subTest(command=command):
+                self.assertFalse(bash_gate.invokes_gatebound_approve(command), command)
+
+    def test_check_and_list_are_allowed(self) -> None:
+        self.assertIsNone(bash_gate.handle(self.event(
+            "python3 ${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py approve check spec/05-gate.md")))
+        self.assertIsNone(bash_gate.handle(self.event(
+            "env -u GATEBOUND_TASK_ID python3 bin/gatebound.py approve list")))
+        self.assertIsNone(bash_gate.handle(self.event(
+            "python3 bin/gatebound.py approve --root . check spec/05-gate.md")))
+
+    def test_other_gatebound_commands_are_not_approval(self) -> None:
+        self.assert_not_approval_denied("python3 bin/gatebound.py jobs status")
+        self.assert_not_approval_denied("grep -n approve src/auth/a.ts")
+        self.assert_not_approval_denied("python3 bin/gatebound.py contract run")
+
+    def test_host_session_may_approve(self) -> None:
+        del os.environ["GATEBOUND_TASK_ID"]
+        self.assertIsNone(bash_gate.handle(self.event(
+            "python3 bin/gatebound.py approve spec/05-gate.md")))
+
+    def test_reason_in_korean_when_session_is_ko(self) -> None:
+        led = ledger.Ledger.load(self.root, "sess-bash")
+        led.set_output_lang("ko")
+        led.save()
+        result = bash_gate.handle(self.event("python3 bin/gatebound.py approve spec/05-gate.md"))
+        self.assertIsNotNone(result)
+        self.assertRegex(self.reason(result), "[가-힣]")
+
+    def test_subprocess_denies_and_exits_zero(self) -> None:
+        code, out, _ = run_gate_subprocess(
+            self.event("env -u GATEBOUND_TASK_ID python3 bin/gatebound.py approve spec/05-gate.md"),
+            env_extra={"GATEBOUND_TASK_ID": "auth", "GATEBOUND_JOB_ID": "job-1"})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_internal_error_in_worker_exits_zero(self) -> None:
+        code, out, _ = run_gate_subprocess({}, raw="not json",
+                                           env_extra={"GATEBOUND_TASK_ID": "auth"})
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), "")
+        event = self.event("x")
+        event["tool_input"] = {"command": ["not", "a", "string"]}
+        code, _, _ = run_gate_subprocess(event, env_extra={"GATEBOUND_TASK_ID": "auth"})
+        self.assertEqual(code, 0)
+
+
+class TestSubprocessContract(BashGateProject):
+    def test_deny_is_json_on_stdout_exit_zero(self) -> None:
+        code, out, _ = run_gate_subprocess(self.event("cat > src/x.ts"))
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_allow_prints_nothing_exit_zero(self) -> None:
+        code, out, _ = run_gate_subprocess(self.event("ls"))
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), "")
+
+    def test_internal_error_still_exits_zero(self) -> None:
+        code, out, _ = run_gate_subprocess({}, raw="this is not json")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), "")
+
+    def test_handler_exception_is_logged_and_allows(self) -> None:
+        event = self.event("cat > src/x.ts")
+        event["tool_input"] = {"command": ["not", "a", "string"]}
+        code, out, _ = run_gate_subprocess(event)
+        self.assertEqual(code, 0)
+
+
+class TestRegistration(unittest.TestCase):
+    def test_hooks_json_routes_bash_to_this_gate(self) -> None:
+        hooks_path = pathlib.Path(__file__).resolve().parents[1] / "hooks" / "hooks.json"
+        hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+        matchers = {entry["matcher"]: entry for entry in hooks["hooks"]["PreToolUse"]}
+        self.assertIn("Bash", matchers)
+        self.assertIn("gates/bash.py", matchers["Bash"]["hooks"][0]["command"])
+
+    def test_doctor_lists_bash_gate(self) -> None:
+        from gatebound import doctor
+
+        self.assertIn("bash.py", doctor.GATE_SCRIPTS)
+
+
+if __name__ == "__main__":
+    unittest.main()

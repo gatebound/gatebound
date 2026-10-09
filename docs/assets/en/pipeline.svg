@@ -1,0 +1,218 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1330" viewBox="0 0 1440 1330" font-family="-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="1440" height="1330" fill="#FBF9F5"/>
+<text x="72" y="72" font-size="34" fill="#12312E" font-weight="700">The gatebound pipeline</text>
+<text x="72" y="104" font-size="17" fill="#6B6459">From not knowing what to build to verified completion — stages 0 to 6</text>
+<rect x="1054" y="40" width="314" height="122" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="1054" y="40" width="4" height="122" rx="2" fill="#8C8577"/>
+<text x="1078" y="68" font-size="14" fill="#6B6459" font-weight="700" letter-spacing="1.2">OUTSIDE THE PIPELINE</text>
+<text x="1078" y="98" font-size="16" fill="#12312E" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:doctor</text>
+<text x="1250" y="98" font-size="13" fill="#6B6459">any time</text>
+<text x="1078" y="126" font-size="16" fill="#12312E" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:setup</text>
+<text x="1250" y="126" font-size="13" fill="#6B6459">once per project</text>
+<text x="1078" y="150" font-size="13" fill="#8C8577">8-axis diagnosis / config and worker check</text>
+<path d="M 372 340 L 402 340" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 404 340 L 396 335 L 396 345 Z" fill="#0E5C55"/>
+<path d="M 704 340 L 734 340" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 736 340 L 728 335 L 728 345 Z" fill="#0E5C55"/>
+<path d="M 1036 340 L 1066 340" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 1068 340 L 1060 335 L 1060 345 Z" fill="#0E5C55"/>
+<rect x="72" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2" stroke-dasharray="7 5"/>
+<rect x="72" y="190" width="300" height="42" rx="12" fill="#4E8C84"/>
+<rect x="72" y="220" width="300" height="12" fill="#4E8C84"/>
+<circle cx="98" cy="211" r="13" fill="#FFFFFF"/>
+<text x="98" y="216" font-size="13" fill="#4E8C84" font-weight="700" text-anchor="middle">0</text>
+<text x="120" y="217" font-size="17" fill="#FFFFFF" font-weight="700">discover</text>
+<rect x="285.2" y="200" width="74.8" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.26" stroke="#FFFFFF" stroke-width="1.1"/>
+<text x="322.6" y="216" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">optional</text>
+<text x="92" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:discover</text>
+<line x1="92" y1="272" x2="352" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="92" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="92" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/00-discovery.md</text>
+<text x="92" y="342" font-size="12.5" fill="#8C8577">Free conversation: pains → opportunities</text>
+<line x1="92" y1="406" x2="352" y2="406" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="92" y="428" font-size="12" fill="#8C8577" letter-spacing="0.8">GATES</text>
+<circle cx="98" cy="448" r="4" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="110" y="452" font-size="12.5" fill="#4A443B">A confirmed verdict of eliminate/reuse</text>
+<text x="110" y="472" font-size="12.5" fill="#4A443B">blocks progressing to interview</text>
+<rect x="404" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="404" y="190" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="404" y="220" width="300" height="12" fill="#0E5C55"/>
+<circle cx="430" cy="211" r="13" fill="#FFFFFF"/>
+<text x="430" y="216" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">1</text>
+<text x="452" y="217" font-size="17" fill="#FFFFFF" font-weight="700">interview</text>
+<text x="424" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:interview</text>
+<line x1="424" y1="272" x2="684" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="424" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="424" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/01-prd.md</text>
+<text x="424" y="336" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/03-architecture.md</text>
+<text x="424" y="362" font-size="12.5" fill="#8C8577">Free conversation + domain research</text>
+<text x="424" y="382" font-size="12.5" fill="#8C8577">proposes features; the user prunes</text>
+<line x1="424" y1="406" x2="684" y2="406" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="424" y="428" font-size="12" fill="#8C8577" letter-spacing="0.8">GATES</text>
+<circle cx="430" cy="448" r="4.5" fill="#0E5C55"/>
+<text x="442" y="452" font-size="12.5" fill="#4A443B">question hook: budget of 2 calls</text>
+<text x="442" y="472" font-size="12.5" fill="#4A443B">over budget is recorded, not blocked</text>
+<rect x="736" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="736" y="190" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="736" y="220" width="300" height="12" fill="#0E5C55"/>
+<circle cx="762" cy="211" r="13" fill="#FFFFFF"/>
+<text x="762" y="216" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">2</text>
+<text x="784" y="217" font-size="17" fill="#FFFFFF" font-weight="700">mockup</text>
+<rect x="918.8" y="200" width="105.2" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.26" stroke="#FFFFFF" stroke-width="1.1"/>
+<text x="971.4" y="216" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">UI: required</text>
+<text x="756" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:mockup</text>
+<line x1="756" y1="272" x2="1016" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="756" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="756" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/02-screens.md</text>
+<text x="756" y="336" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/tokens.json</text>
+<text x="756" y="356" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/design/prototype-*.html</text>
+<rect x="752" y="370" width="268" height="50" rx="6" fill="#FBF1DA" stroke="#D9AE4A" stroke-width="1.2"/>
+<text x="886" y="391" font-size="13.5" fill="#8A6410" font-weight="700" text-anchor="middle">★ The user confirms the prototype</text>
+<text x="886" y="410" font-size="12" fill="#8A6410" text-anchor="middle">the Prototype confirmed &lt;date&gt; line</text>
+<text x="756" y="446" font-size="12" fill="#8C8577" letter-spacing="0.8">RULES</text>
+<text x="756" y="470" font-size="12.5" fill="#4A443B">Skipped when the PRD is [non-ui]</text>
+<rect x="1068" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="1068" y="190" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="1068" y="220" width="300" height="12" fill="#0E5C55"/>
+<circle cx="1094" cy="211" r="13" fill="#FFFFFF"/>
+<text x="1094" y="216" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">3</text>
+<text x="1116" y="217" font-size="17" fill="#FFFFFF" font-weight="700">tasks</text>
+<text x="1088" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:tasks</text>
+<line x1="1088" y1="272" x2="1348" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="1088" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="1088" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/04-tasks.md</text>
+<text x="1088" y="342" font-size="12.5" fill="#8C8577">Tasks as gatebound-task fences</text>
+<text x="1088" y="362" font-size="12.5" fill="#8C8577">≥ 1 gate per task, no overlapping write_scope</text>
+<text x="1088" y="382" font-size="12.5" fill="#8C8577">tokens gate + screenshot criterion by default</text>
+<line x1="1088" y1="406" x2="1348" y2="406" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="1088" y="428" font-size="12" fill="#8C8577" letter-spacing="0.8">GATES</text>
+<circle cx="1094" cy="448" r="4" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="1106" y="452" font-size="12.5" fill="#4A443B">No 02-screens.md or no confirmation line</text>
+<text x="1106" y="472" font-size="12.5" fill="#4A443B">→ refuses to run (UI projects)</text>
+<line x1="886" y1="490" x2="886" y2="514" stroke="#4E8C84" stroke-width="2" stroke-dasharray="5 4"/>
+<rect x="404" y="514" width="964" height="92" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2" stroke-dasharray="7 5"/>
+<rect x="404" y="514" width="250" height="92" rx="12" fill="#4E8C84"/>
+<rect x="642" y="514" width="12" height="92" fill="#4E8C84"/>
+<circle cx="430" cy="540" r="13" fill="#FFFFFF"/>
+<text x="430" y="544" font-size="11.5" fill="#4E8C84" font-weight="700" text-anchor="middle">2b</text>
+<text x="452" y="546" font-size="17" fill="#FFFFFF" font-weight="700">design</text>
+<rect x="563.2" y="529" width="74.8" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.26" stroke="#FFFFFF" stroke-width="1.1"/>
+<text x="600.6" y="545" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">optional</text>
+<text x="424" y="584" font-size="13" fill="#FFFFFF" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:design</text>
+<text x="678" y="540" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="678" y="564" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/02-design.md</text>
+<text x="678" y="584" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/tokens.json</text>
+<text x="818" y="584" font-size="12" fill="#8C8577">(shared with mockup)</text>
+<text x="984" y="540" font-size="12" fill="#8C8577">Figma · screenshots · HTML · live site · preset · pattern file</text>
+<text x="984" y="564" font-size="13" fill="#4A443B">Re-enter at any stage — before mockup, with it, or mid-build</text>
+<text x="984" y="586" font-size="13" fill="#4A443B">Mid-build it edits neither 04 nor 05; it reports affected tasks</text>
+<rect x="72" y="628" width="1296" height="56" rx="8" fill="#F3EEE4" stroke="#DCD5C8" stroke-width="1.5"/>
+<text x="96" y="651" font-size="14.5" fill="#6B6459" font-weight="700">Write gate — closed</text>
+<text x="266" y="651" font-size="13" fill="#8C8577">spec/ exists, 05-gate.md not approved</text>
+<text x="96" y="672" font-size="13" fill="#8C8577">Source file edits refused. Only spec/** · docs/** · README* · root *.md can be written.  .gatebound/ is written by gatebound only (except config.json)</text>
+<path d="M 1368 340 L 1404 340 L 1404 708 L 222 708 L 222 734" stroke="#0E5C55" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+<path d="M 222 736 L 217 728 L 227 728 Z" fill="#0E5C55"/>
+<path d="M 372 886 L 402 886" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 404 886 L 396 881 L 396 891 Z" fill="#0E5C55"/>
+<path d="M 704 886 L 734 886" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 736 886 L 728 881 L 728 891 Z" fill="#0E5C55"/>
+<rect x="72" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#B8860B" stroke-width="2.5"/>
+<rect x="72" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#B8860B" stroke-width="2.5"/>
+<rect x="72" y="736" width="300" height="42" rx="12" fill="#8A6410"/>
+<rect x="72" y="766" width="300" height="12" fill="#8A6410"/>
+<circle cx="98" cy="757" r="13" fill="#FFFFFF"/>
+<text x="98" y="762" font-size="13" fill="#8A6410" font-weight="700" text-anchor="middle">4</text>
+<text x="120" y="763" font-size="17" fill="#FFFFFF" font-weight="700">gate</text>
+<text x="92" y="804" font-size="13" fill="#8A6410" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:gate</text>
+<rect x="92" y="818" width="260" height="32" rx="6" fill="#FBF1DA" stroke="#D9AE4A" stroke-width="1.2"/>
+<text x="222" y="839" font-size="14" fill="#8A6410" font-weight="700" text-anchor="middle">★ A human approves</text>
+<text x="92" y="876" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="92" y="898" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/05-gate.md</text>
+<text x="92" y="918" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.gatebound/contract.json</text>
+<text x="92" y="938" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.gatebound/approvals.json</text>
+<line x1="92" y1="952" x2="352" y2="952" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="92" y="974" font-size="12" fill="#8C8577" letter-spacing="0.8">RULES</text>
+<text x="92" y="998" font-size="12.5" fill="#4A443B">Approval pins the 05-gate.md hash</text>
+<text x="92" y="1018" font-size="12.5" fill="#4A443B">Edit it: approval expires, approve again</text>
+<rect x="404" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="404" y="736" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="404" y="766" width="300" height="12" fill="#0E5C55"/>
+<circle cx="430" cy="757" r="13" fill="#FFFFFF"/>
+<text x="430" y="762" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">5</text>
+<text x="452" y="763" font-size="17" fill="#FFFFFF" font-weight="700">build</text>
+<text x="424" y="804" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:build</text>
+<rect x="420" y="814" width="268" height="74" rx="6" fill="#E4F0EC" stroke="#9FCCC4" stroke-width="1.2"/>
+<text x="432" y="832" font-size="12" fill="#0E5C55" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">build.execution</text>
+<text x="432" y="851" font-size="12.5" fill="#12312E" font-weight="600">host (default) — this session codes</text>
+<text x="444" y="866" font-size="12" fill="#3A5F59">jobs complete runs the gates</text>
+<text x="432" y="882" font-size="12.5" fill="#3A5F59">worker — a worker spawned per task</text>
+<text x="424" y="906" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="424" y="925" font-size="12.5" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.gatebound/jobs/&lt;job_id&gt;/</text>
+<text x="424" y="943" font-size="12.5" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/PROGRESS.md</text>
+<line x1="424" y1="952" x2="684" y2="952" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="424" y="974" font-size="12" fill="#8C8577" letter-spacing="0.8">GATES</text>
+<circle cx="430" cy="994" r="4.5" fill="#0E5C55"/>
+<text x="442" y="998" font-size="12.5" fill="#4A443B">write hook: workers stay in write_scope</text>
+<circle cx="430" cy="1014" r="4.5" fill="#0E5C55"/>
+<text x="442" y="1018" font-size="12.5" fill="#4A443B">Stop hook: runs the turn criteria</text>
+<rect x="736" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="736" y="736" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="736" y="766" width="300" height="12" fill="#0E5C55"/>
+<circle cx="762" cy="757" r="13" fill="#FFFFFF"/>
+<text x="762" y="762" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">6</text>
+<text x="784" y="763" font-size="17" fill="#FFFFFF" font-weight="700">verify</text>
+<text x="756" y="804" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:verify</text>
+<text x="756" y="828" font-size="12.5" fill="#0E5C55" font-weight="600">Independent evaluator (read-only)</text>
+<line x1="756" y1="840" x2="1016" y2="840" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="756" y="862" font-size="12" fill="#8C8577" letter-spacing="0.8">OUTPUT</text>
+<text x="756" y="884" font-size="13" fill="#2E2A24">Verdict per criterion</text>
+<text x="756" y="902" font-size="12" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ok / warn / fail / unverified</text>
+<text x="756" y="924" font-size="13" fill="#2E2A24">-visual verdicts (screenshot criteria)</text>
+<text x="756" y="944" font-size="13" fill="#2E2A24">Last verification in PROGRESS.md</text>
+<line x1="756" y1="952" x2="1016" y2="952" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="756" y="974" font-size="12" fill="#8C8577" letter-spacing="0.8">GATES</text>
+<circle cx="762" cy="994" r="4.5" fill="#0E5C55"/>
+<text x="774" y="998" font-size="12.5" fill="#4A443B">spawn hook: checks the evaluator's scope</text>
+<text x="756" y="1020" font-size="12.5" fill="#B3382C" font-weight="600">A -visual fail overrides an ok aggregate</text>
+<path d="M 1036 886 L 1066 886" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 1068 886 L 1060 881 L 1060 891 Z" fill="#0E5C55"/>
+<rect x="1068" y="736" width="300" height="300" rx="10" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<rect x="1068" y="736" width="4" height="300" rx="2" fill="#0E5C55"/>
+<circle cx="1098" cy="768" r="4.5" fill="#0E5C55"/>
+<text x="1112" y="772" font-size="15" fill="#12312E" font-weight="700">The Stop gate runs the contract</text>
+<text x="1092" y="808" font-size="13" fill="#4A443B">Ending the session during build or</text>
+<text x="1092" y="832" font-size="13" fill="#4A443B">verify runs the completion contract.</text>
+<text x="1092" y="866" font-size="13" fill="#4A443B">Any fail or unverified blocks the</text>
+<text x="1092" y="890" font-size="13" fill="#4A443B">end, up to 3 times.</text>
+<text x="1092" y="924" font-size="13" fill="#4A443B">During build only turn criteria run;</text>
+<text x="1092" y="948" font-size="13" fill="#4A443B">verify criteria are judged by verify.</text>
+<rect x="1088" y="984" width="260" height="34" rx="6" fill="#E4F0EC" stroke="#9FCCC4" stroke-width="1.2"/>
+<text x="1218" y="1006" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">build passed ≠ contract ok</text>
+<line x1="222" y1="1036" x2="222" y2="1064" stroke="#B8860B" stroke-width="2.5" stroke-dasharray="6 4"/>
+<path d="M 222 1070 L 217 1060 L 227 1060 Z" fill="#B8860B"/>
+<rect x="82" y="1070" width="280" height="40" rx="20" fill="#FBF1DA" stroke="#D9AE4A" stroke-width="1.5"/>
+<text x="222" y="1095" font-size="14.5" fill="#8A6410" font-weight="700" text-anchor="middle">Approval opens the write gate</text>
+<path d="M 362 1090 L 402 1090" stroke="#B8860B" stroke-width="2.5" fill="none"/><path d="M 404 1090 L 396 1085 L 396 1095 Z" fill="#B8860B"/>
+<rect x="404" y="1062" width="964" height="56" rx="8" fill="#E4F0EC" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="428" y="1085" font-size="14.5" fill="#0E5C55" font-weight="700">Write gate — open</text>
+<text x="428" y="1106" font-size="13" fill="#3A5F59">The host session can write source.  A worker session (GATEBOUND_TASK_ID) writes only inside its write_scope (rule b, stricter)</text>
+<rect x="72" y="1150" width="416" height="140" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="72" y="1150" width="4" height="140" rx="2" fill="#0E5C55"/>
+<text x="96" y="1180" font-size="15" fill="#12312E" font-weight="700">Paths back</text>
+<text x="96" y="1208" font-size="13" fill="#4A443B">Edit 05-gate.md: approval and contract go stale.</text>
+<text x="96" y="1230" font-size="13" fill="#4A443B">If 02-screens, 02-design or tokens.json change</text>
+<text x="96" y="1252" font-size="13" fill="#4A443B">after the contract, contract status is fail (stale).</text>
+<text x="96" y="1274" font-size="13" fill="#4A443B">If verify is not ok, go back to /gatebound:build.</text>
+<rect x="512" y="1150" width="416" height="140" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="512" y="1150" width="4" height="140" rx="2" fill="#B3382C"/>
+<text x="536" y="1180" font-size="15" fill="#12312E" font-weight="700">When failures repeat</text>
+<text x="536" y="1208" font-size="13" fill="#4A443B">Past max_retries (default 2), or after two</text>
+<text x="536" y="1230" font-size="13" fill="#4A443B">identical failures in a row, jobs refuses the task.</text>
+<text x="536" y="1252" font-size="13" fill="#4A443B">build writes spec/RECOVERY.md and halts.</text>
+<text x="536" y="1274" font-size="13" fill="#4A443B">Fix the cause, then resume with --force-retry.</text>
+<rect x="952" y="1150" width="416" height="140" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="952" y="1150" width="4" height="140" rx="2" fill="#8C8577"/>
+<text x="976" y="1180" font-size="15" fill="#12312E" font-weight="700">How gates are marked</text>
+<circle cx="982" cy="1204" r="4.5" fill="#0E5C55"/>
+<text x="996" y="1208" font-size="13" fill="#4A443B">hook — hooks.json blocks it in code</text>
+<circle cx="982" cy="1226" r="4" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="996" y="1230" font-size="13" fill="#4A443B">spec validate — run by the command; fail stops it</text>
+<text x="976" y="1252" font-size="13" fill="#8A6410" font-weight="700">★</text>
+<text x="996" y="1252" font-size="13" fill="#4A443B">a human checks or approves here</text>
+<rect x="975" y="1264" width="14" height="12" rx="3" fill="none" stroke="#0E5C55" stroke-width="1.5" stroke-dasharray="3 2"/>
+<text x="996" y="1274" font-size="13" fill="#4A443B">dashed border = optional stage</text>
+</svg>

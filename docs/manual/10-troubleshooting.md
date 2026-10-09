@@ -1,0 +1,119 @@
+# 문제 해결
+
+## 먼저 — 차단은 대부분 고장이 아니다
+
+gatebound를 쓰다 보면 **막히는 일이 자주 생긴다.** 그게 이 도구의 목적이다. 그래서 문제를 찾기 전에 먼저 구분할 게 있다.
+
+| 이런 건 정상이다 (의도된 차단) | 이건 고장이다 |
+|---|---|
+| 소스 파일을 못 쓴다 → 아직 `/gatebound:gate` 승인 전 | 훅이 **하나도** 발화하지 않는다 |
+| `/gatebound:tasks`가 거부한다 → 프로토타입 미확정 | `/gatebound:doctor`의 2번 항목이 `fail` |
+| 세션을 못 끝낸다 → 완료 조건에 `fail`/`unverified`가 있다 | CLI가 `ModuleNotFoundError`로 죽는다 |
+| 판정이 `unverified`다 → 검사를 **못 한** 것이지 틀린 게 아니다 | 훅 오류 로그에 예외가 쌓인다 |
+
+의도된 차단은 **메시지에 무엇이 빠졌는지와 다음에 뭘 하면 되는지가 함께 나온다.** 메시지 없이 그냥 안 되는 경우가 진짜 문제다.
+
+막혔을 때 가장 먼저 할 일은 `/gatebound:doctor`다. 어느 항목이 `fail`인지 보면 위 두 열 중 어느 쪽인지 바로 갈린다.
+
+## 증상 → 원인 → 처방
+
+| 증상 | 원인 | 처방 |
+|---|---|---|
+| 훅이 전혀 안 먹힘 | 플러그인이 설치되지 않았거나 `settings.json`의 `enabledPlugins`에서 비활성 | `/gatebound:doctor` 2번 축 확인 후 `/plugin install gatebound@gatebound` 또는 `/plugin enable gatebound@gatebound`. 그다음 Claude Code 재시작 |
+| 설치했는데 여전히 안 먹힘 | 현재 세션이 구 버전을 로드한 상태 | Claude Code 재시작 |
+| `/gatebound:doctor` 2번 축이 `fail`이고 "more than one plugin of this name family" | gatebound와 gatekit(0.17.0 전의 이름)이 동시에 켜짐 — 사용자 또는 프로젝트 `settings.json`의 `enabledPlugins`, 또는 Codex 플러그인 캐시에 둘 다 있음. 구 플러그인이 **사용자** 설정(`~/.claude/settings.json` 또는 `$CLAUDE_CONFIG_DIR`)에서 켜져 있고 설치 목록과 플러그인 캐시 디렉터리에도 있으며 프로젝트에 아직 `.gatekit/`이 있으면 새 플러그인의 Stop·질문 게이트는 쉬고 프롬프트 훅이 세션당 한 번 경고한다. 프로젝트 설정은 구 플러그인을 끌 수만 있고 켤 수는 없으며, 이 판단은 세션의 첫 프롬프트에서 한 번만 내려 원장에 기록한다(세션 도중 설정을 바꿔도 다음 세션부터 적용, ADR-0029 개정) | 처방에 나온 대로 구 플러그인을 끄거나(`/plugin disable gatekit@gatekit`) 지운다(`claude plugin uninstall gatekit@gatekit`). 쓰기·Bash·spawn 게이트는 둘 다 돌아도 같은 거부만 낸다 (ADR-0029) |
+| `/gatebound:doctor` 3번 축이 `fail`이고 "both .gatebound/ and .gatekit/ exist" | 프로젝트에 상태 디렉터리가 두 개. 훅은 **현재 이름**(`.gatebound/`)의 디렉터리가 있으면 다른 쪽에 무엇이 있든 언제나 그쪽을 쓴다. 다른 이름의 디렉터리는 현재 이름의 디렉터리가 없을 때만 읽는다(`migrate --apply`로 아직 옮기지 않은 gatekit 프로젝트). 심볼릭 링크·정션(재분석 지점)이거나 실제 경로가 프로젝트 루트 바로 아래가 아닌 상태 디렉터리는 아예 후보에서 뺀다 | 쓰지 않는 쪽에서 필요한 것만 옮기고 그 디렉터리를 터미널에서 지운다(세션 안에서는 상태 보호 규칙이 거부한다). 그동안 `migrate`는 거부한다 (ADR-0029) |
+| Stop 게이트가 "both .gatebound/, .gatekit/ hold approvals.json"이라며 막고 `unverified`를 기록 | 두 상태 디렉터리 **모두**에 `approvals.json`이 있다. 한쪽이 위조됐을 수 있어(압축 해제, 링크, 이름 바꾸기) 어느 승인·계약도 판정하지 않는다. 최대 3번 막고 그 뒤엔 `unverified`로 놓아준다 | `/gatebound:doctor`로 어느 쪽을 훅이 쓰는지 확인하고, 직접 만들지 않은 디렉터리를 터미널에서 지우거나 `gatebound migrate`로 하나만 남긴다 (ADR-0029 개정) |
+| 소스 파일 수정이 차단됨 | `spec/05-gate.md`가 승인되지 않음 (`unverified`) 또는 승인 만료 (`fail`) | `/gatebound:gate` 실행 후 사용자가 승인. 급하면 `spec/`·`docs/`·루트 `*.md`에 먼저 쓴다 |
+| 스펙 검증 실패 — 제목 누락 | 템플릿의 H2 제목을 지우거나 바꿈 | `heading-map.json`의 해당 언어 제목을 그대로 복원. 06번 문서에 전체 목록이 있다 |
+| 스펙 검증 실패 — 다른 언어 제목 혼입 | 한 파일에 `## 목표`와 `## Goals`가 섞임 | 한 언어로 통일. 특히 `PROGRESS.md`에 프리핸드 제목을 쓸 때 자주 생긴다. 템플릿에서 복사한다 |
+| 스펙 검증 실패 — 가정 원장 번호 불일치 | 인라인 표시 번호와 원장 행 번호가 안 맞음 | 인라인에 있고 행이 없으면 `fail`이니 행을 추가. 행만 있고 인라인이 없으면 `warn` |
+| 계약이 stale | `05-gate.md`가 파생 이후 변경됨, 또는 디자인 입력(`02-screens.md`, `02-design.md`, `tokens.json`)이 바뀜 — `contract status`가 바뀐 파일명을 알려준다 | `/gatebound:tasks` 후 `/gatebound:gate` 재실행 (디자인이 바뀐 경우), 또는 `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" contract derive` 재실행 (05만 바뀐 경우). 승인도 만료됐으면 다시 승인 |
+| `approve check`가 `fail` | 승인 후 파일이 바뀜 | 사용자가 다시 읽고 다시 승인. 해시를 맞추려고 파일을 되돌리면 안 된다 |
+| `approve check`가 `unverified` | 승인 기록 자체가 없음 | `/gatebound:gate`를 처음부터 실행 |
+| Stop 게이트·`contract run`이 `gate_not_approved` | `05-gate.md` 승인이 없거나 맞지 않음(파일 또는 `approvals.json`이 바뀜) | 바뀐 것을 되돌리고 승인된 기준대로 코드를 고친다. 게이트를 바꿔야 하면 `/gatebound:gate`로 새로 승인 (ADR-0027) |
+| Stop 게이트·`contract run`이 `contract_mismatch` | `contract.json`이 `05-gate.md`에서 파생한 내용과 다름(직접 수정됨) | `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" contract derive`로 복원 후 코드를 고친다. 기준을 바꿔야 하면 `/gatebound:gate` (ADR-0027) |
+| `.gatebound/` 아래 쓰기·삭제가 거부됨(`approvals.json`, `contract.json`, `runs/`, `jobs/`, `attempts.json`, `baseline.json` 등) | `config.json`과 `eval/` 외의 `.gatebound/`는 gatebound 자신(훅과 CLI)만 쓴다 | 직접 고치지 말고 `/gatebound:gate`를 다시 실행. 설정은 `config.json`, 오래된 잡은 `jobs clean` (ADR-0027) |
+| 세션에서 `rm -rf .gatebound`가 거부됨 | 훅이 켜져 있는 동안 gatebound는 자기 상태를 지우는 명령을 거부한다 | 플러그인을 먼저 제거하고 터미널에서 직접 지운다 (`UNINSTALL.md`) |
+| `enforce_spec_before_code: false`인데 Stop 게이트가 `gate_not_approved` | 그 설정은 쓰기 규칙 (a)만 끈다. Stop 게이트는 승인된 기준만 판정한다 | `/gatebound:gate`로 `05-gate.md`를 승인한다 (ADR-0027) |
+| `python3 <<PY`·`echo … \| python3`가 승인 전에 거부됨(`script on stdin`) | 표준 입력으로 받은 스크립트가 무엇을 쓰는지 알 수 없다 | 스크립트를 파일로 쓰고 `python3 script.py`로 실행하거나, Write/Edit 도구를 쓴다 |
+| `approve check`가 `fail`이고 stderr에 `grading files changed` | 승인한 기준의 테스트 파일이 바뀐 채 다시 derive됨 (`grading_unapproved`) | 의도한 변경이면 `/gatebound:gate`로 재승인, 아니면 테스트 변경을 되돌린다 (ADR-0023) |
+| 워커 없음 (`workers check`가 `fail`) | 기본 백엔드 바이너리가 PATH에 없음 | 해당 CLI 설치, 또는 `workers set-default <name>`으로 다른 백엔드 지정 |
+| codex가 비활성 | 기본값이 `"enabled": false` | `/gatebound:setup codex` 실행. 설명을 읽고 확인해야 켜진다 |
+| `workers enable`이 거부됨 | argv에 샌드박스 bypass 플래그가 있는데 `"unsafe": true`가 없음 | gatebound는 사용자를 대신해 `unsafe`를 설정하지 않는다. bypass 없는 백엔드를 쓴다 |
+| 태스크 write_scope 충돌 | 같은 라운드의 두 태스크가 같은 파일을 씀 | 라운드를 나누거나 파일 경계가 다르게 태스크를 다시 자른다. **범위를 넓히지 않는다** |
+| 워커 안에서 쓰기가 거부됨 | 그 태스크의 `write_scope` 밖 경로 | `04-tasks.md`의 분해가 잘못된 신호다. 태스크를 다시 자른다 |
+| 전체 예산 초과로 `unverified` | 기준 합계가 45초 기본 예산보다 큼 | 실측한 뒤 `gatebound-budget` 펜스로 `total_budget_s` 선언 (상한 600). 측정 없이 올리지 않는다 |
+| 판정이 `unverified`이고 사유가 `all tests skipped (…)` | 수집한 테스트가 전부 건너뛰어졌다(`.skip`, `@unittest.skip`, 플랫폼 조건 등). 러너 출력에 통과가 하나도 없으니 이 실행은 아무것도 증명하지 못했다(ADR-0022 개정 A). 출력에 통과가 보이는 일부 건너뛰기는 `ok`다. 예외: unittest에서 테스트마다 subTest 하나가 건너뛰어지고 나머지 subTest만 통과하거나, 통과한 테스트 뒤에 건너뛴 테스트가 줄바꿈으로 끝나는 출력을 남기면(`-v` 없이) 출력이 전부 건너뛴 실행과 구별되지 않아 `unverified`가 된다. 이때는 `-v`로 실행하면 통과가 보인다(subTest 경우 제외) | 건너뛰기를 풀거나, 그 테스트가 실제로 돌 수 있는 환경에서 기준을 실행한다. subTest 안에서 건너뛰지 말고 테스트 단위로 건너뛴다 |
+| 정지 게이트가 반복 차단 | 계약에 `fail`이나 `unverified` 기준이 있음 | 메시지에 나온 기준의 원인을 고친다. 3회 차단 후에는 자동으로 물러나지만 판정은 실패로 기록된다 |
+| 정지 게이트가 "다른 계약 실행(평가자 또는 `contract run`)이 아직 진행 중이어서 이번에는 아무것도 판정하지 않았습니다 (contract_busy)"로 차단 | 다른 계약 실행이 `contract.lock`을 30초 동안 쥐고 있어서 이번 실행은 아무것도 판정하지 않았다. 결과는 `unverified`이고 기록되지 않는다(ADR-0031) | 실패도 통과도 아니다. 다른 실행(평가자 또는 `contract run`)이 끝나기를 기다린 뒤 턴을 다시 마친다 |
+| 턴 끝마다 계약이 돌고 컨텍스트 줄에 "Stop 예산 소진으로 판정하지 못한 기준" | `stop.budget_s` 안에 turn 등급 기준을 다 시작하지 못함. 판정 안 한 기준이 있으면 `ok`가 아니므로 물러나지 않는다 | 파일을 그대로 두면 다음 턴 끝들이 미룬 기준부터 실행해 수렴한다. 느린 기준은 `"tier": "verify"`로 옮기거나 맨 뒤에 선언한다. 측정한 뒤 `stop.budget_s`를 올려도 된다 |
+| 빌드가 끝났는데도 턴 끝마다 계약이 돌고 컨텍스트 줄에 "빌드 잡 미완료: 대기 N개" | 호스트 잡의 태스크가 `queued`로 남아 잡이 끝나지 않음. 끝나지 않은 잡은 매 턴 판정한다(ADR-0024) | 남은 태스크를 진행하거나, 그만둘 거면 `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" jobs stop`. 멈춘 태스크는 `fail`로 기록되고 게이트는 인계 점검 뒤 물러난다 |
+| e2e 테스트가 엉뚱한 화면을 보고 실패함 | `reuseExistingServer: true`인데 다른 프로젝트의 서버가 같은 포트를 잡고 있어 그 앱을 테스트함 | `/gatebound:doctor` 3번 축이 포트와 프로세스를 알려 준다(ADR-0026). 그 서버를 멈추거나 `playwright.config`의 포트를 바꾼다 |
+| 한국어로 물었는데 영어로 출력됨 | 프롬프트의 한글 비율이 30% 미만이거나 원장에 `en`이 저장됨 | 한국어 문장으로 다시 프롬프트를 보낸다. `lang` 서브커맨드로 감지 결과를 직접 확인할 수 있다 |
+| CLI 실행 시 `ModuleNotFoundError: gatebound` | 모듈 실행 형식을 썼고, 프로젝트 디렉터리에서는 패키지가 `sys.path`에 없음 | 런처 형식 `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" <sub>` 을 쓴다 |
+| spawn이 거부됨 | 프롬프트에 `gatebound-scope` 펜스가 없거나 JSON이 잘못됨 | 펜스를 추가한다. `write_scope`와 `stop_when`은 필수다 |
+| spawn 범위 충돌 | 이미 활성인 에이전트의 범위와 겹침 | 범위를 좁히거나 그 에이전트가 끝날 때까지 기다린다. 메시지에 소유자 이름이 나온다 |
+| 빌드는 통과했는데 완료가 아니라고 함 | 빌드 통과와 계약 통과는 다름 | `/gatebound:verify`가 계약을 판정한다 |
+
+## 훅 오류 로그 위치
+
+```text
+.gatebound/runs/hook-errors.log
+```
+
+훅 내부에서 예외가 나면 여기에 한 줄이 추가된다.
+
+```text
+<iso 타임스탬프> <이벤트 이름> <오류>
+```
+
+훅은 이런 상황에서도 exit 0으로 끝나고 동작을 허용한다. 그래서 "게이트가 이상하게 통과시킨다" 싶으면 이 파일을 먼저 본다. 파일이 비어 있거나 없으면 훅은 정상 동작한 것이다.
+
+## 세션 원장 직접 보기
+
+게이트들이 무엇을 기록했는지 확인할 때 쓴다.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" ledger show --session <session_id>
+```
+
+출력에서 확인할 것들이다.
+
+- `output_lang` — 감지된 언어가 기대와 다른가
+- `active_pipeline` — Stop 게이트가 계약을 실행하려면 `build`나 `verify`여야 한다
+- `questions.asked` / `budget_exceeded` — 인터뷰가 질문을 몇 번 했는가
+- `scopes` — 어떤 에이전트가 어떤 범위를 잡고 있는가
+- `stop.block_count` / `final_verdict` — 몇 번 차단됐고 최종 판정이 무엇인가
+- `stop.stood_down` — Stop 게이트가 끝난 잡의 판정을 기록하고 물러났는가(ADR-0024). 값이 있으면 이후 턴 끝에서는 계약을 실행하지 않는다. `skipped`는 판정 없이 넘긴 턴 끝 수다. 다시 확인하려면 `/gatebound:verify`
+- `stop.deferred` — 마지막 판정에서 미룬 기준(`tier`: verify 등급, `budget`: `stop.budget_s` 소진). `budget`이 있으면 그 판정은 `unverified`이고 게이트는 물러나지 않는다
+
+## 잡 상태 직접 보기
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" jobs results --compact
+```
+
+특정 게이트의 실패 이유가 필요하면 그 태스크의 `gates.json`만 읽는다.
+
+```text
+.gatebound/jobs/<job_id>/tasks/<task_id>/gates.json
+```
+
+`output.txt`와 `stderr.txt`는 워커 전사 전체다. 컨텍스트로 읽지 않는다.
+
+## 잡 디렉터리 정리
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" jobs clean        # 최근 잡만 남김
+python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" jobs clean --all  # 전부 삭제
+```
+
+## 진단이 막힐 때 순서
+
+1. `/gatebound:doctor` — 8축 중 무엇이 `fail`인가
+2. `.gatebound/runs/hook-errors.log` — 훅이 조용히 죽고 있는가
+3. `spec validate --json` — 어떤 파일의 어떤 지적인가
+4. `contract status` — `ok` / `fail`(stale) / `unverified`(없음)
+5. `approve check spec/05-gate.md` — 승인이 살아 있는가
+6. `jobs results --compact` — 어떤 태스크가 어디서 멈췄는가

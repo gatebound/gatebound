@@ -1,0 +1,361 @@
+# ADR-0027: Protected state files, and a Stop gate that checks the approval and the contract it judges
+
+Status: accepted 2026-10-03 (owner approval in session).
+
+Origin: the idea comes from a study member's Windows fork,
+github.com/yeoul9703/gatekit-cc-windows, which closed both holes below in its
+own tree. Only the idea is taken; the code here is written from this
+repository's own modules (clean-room rule).
+
+## Context
+
+ADR-0023 pins the grading files' hashes inside `.gatekit/approvals.json`, and
+`.gatekit/contract.json` holds the criteria derived from `spec/05-gate.md`.
+Both files are plain JSON in the project, and nothing stopped a session from
+rewriting them:
+
+1. **The write gate allowed both files.** Rule (a)'s allowlist holds
+   `.gatekit/**`, so a `Write` to `.gatekit/approvals.json` with the current
+   hash of `05-gate.md` was allowed before approval — and that one write opens
+   code writing without the user. After approval the Bash gate does not parse
+   at all, so `echo … > .gatekit/approvals.json` was allowed too.
+2. **The Stop gate trusted `contract.json`.** `contract.status` compares only
+   the recorded `source_sha256` (and the design inputs) with the files. A
+   `contract.json` whose criteria were loosened by hand, with the recorded
+   source hash left as it was, was judged as if it were the approved contract.
+
+Reproduced on 0.16.4 (a temporary project, `05-gate.md` with one criterion
+that exits 1, derived, then approved):
+
+```
+pre-approval Write .gatekit/approvals.json   -> allowed
+post-approval Write .gatekit/contract.json   -> allowed
+post-approval Bash `echo {} > .gatekit/approvals.json` -> allowed
+contract.json criterion argv edited to `python -c pass`, pipeline verify:
+Stop -> allowed, final_verdict "ok"
+```
+
+## Decision
+
+### 1. `approvals.json` and `contract.json` are written only by gatekit
+
+`.gatekit/approvals.json` and `.gatekit/contract.json` are written only by
+gatekit's own CLI (`approve`, `contract derive`). Every other writer is denied,
+always: before and after approval, in any session, with or without
+`GATEKIT_TASK_ID`, and whatever `enforce_spec_before_code` says.
+
+- **Write gate.** `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and every file an
+  `apply_patch` header names (`Add`/`Update`/`Delete File`, `Move to`) are
+  checked against the two files before rules (a) and (b), and the patch path
+  no longer skips this check when no rule is active.
+- **Matching.** A target is protected when its last two path segments are
+  `.gatekit` and `approvals.json` or `contract.json`, compared
+  case-insensitively everywhere, after: `\` read as `/`, Git Bash `/c/…` read
+  as `C:/…`, each segment cut at an NTFS stream suffix (`::$DATA`, `:name`;
+  a drive letter is kept) and stripped of trailing dots and spaces, `.` and
+  `..` resolved. The check runs on the path as written (joined to the project
+  root when relative) and again on its `realpath`, so a symlinked file or
+  directory is followed; when the target exists, `os.path.samefile` against
+  the two files also catches a hard link or a short (8.3) name. A protected
+  file outside the project root is still protected: it is some gatekit
+  project's record.
+- **Bash gate.** Each target the existing static extraction finds (redirects,
+  `tee`, `cp`/`mv`/`ln`/`install`/`rsync` destinations, `sed -i`, `perl -i`,
+  `dd of=`, `touch`/`rm`/`truncate`/…, `cd` tracking, `sh -c` recursion) goes
+  through the same check. Before approval this happens inside
+  `write.decide_path`, which the Bash gate already calls for every target.
+  After approval the Bash gate judges nothing else, so a narrow always-on
+  check runs first on every command (the parse is static and cheap; only its
+  protected-file findings are acted on). It denies when a resolved target is
+  protected; when a removed path (`rm`, `rmdir`, `unlink`
+  operands, `mv` sources) is a protected file or a directory that contains
+  one (`rm -rf .gatekit`, `mv .gatekit x`); when a `cp`/`mv`/`ln`/`install`/
+  `rsync` destination (positional or `-t`/`--target-directory`, after
+  realpath) is a `.gatekit` directory and a source is named like a protected
+  file or is a directory copied by contents (`src/`) that holds one, or the
+  destination is the directory holding this project's `.gatekit` and a source
+  is a `.gatekit` directory or a directory copied by contents that holds one;
+  and when the command is otherwise opaque (inline interpreter code, `git
+  checkout`, `eval`, …) and its text names `.gatekit/approvals.json` or
+  `.gatekit/contract.json`. A target, removed path or copy source with glob
+  or brace characters (`approval?.json`, `{approvals,x}.json`, `.gatekit/*`)
+  counts when it can match a protected file segment by segment (braces read
+  as `*`; a leading dot matched literally, as the shell does without
+  `dotglob`). Reserved words before a command (`{`, `!`, `then`, `do`, …) are
+  skipped so `cd` behind them is tracked, `pushd` is read as `cd` and `popd`
+  makes the directory unknown; and because a `cd` under `&&`/`||`/`if` may or
+  may not run, a target named `approvals.json`/`contract.json` counts whenever
+  one of the command's directories is a `.gatekit` directory or its text names
+  `.gatekit`. (The keyword, `pushd` and `popd` reading also sharpens rules (a)
+  and (b) before approval: a relative write after `popd` is now `opaque`.)
+- **The launcher stays allowed.** `python3 "<plugin>/bin/gatekit.py" approve
+  spec/05-gate.md` and `… contract derive` name no write target in shell
+  syntax, so the host session runs them as before. A worker's `approve` stays
+  denied (ADR-0023). Redirecting the launcher's output into a protected file
+  is a redirect like any other and is denied.
+- **Message.** The deny reason (en/ko, by `output_lang`) names the path, says
+  the file is gatekit's own record, and points to `/gatekit:gate`.
+
+### 2. The Stop gate and `contract run` check the approval and the contract first
+
+Before any criterion runs, `contract.integrity(root, require_approval)` is
+evaluated, in this order, and the first failure is the result
+(`unverified`, no criteria):
+
+1. no contract — as before, `execute` reports it;
+2. `contract_stale` — `contract.status` is not `ok` (unchanged; the remedy is
+   `contract derive`);
+3. **`gate_not_approved`** (when `require_approval`) — `approval.check_gate`
+   is not `ok`: no approval, a stale one, or (ADR-0023) a pinned grading file
+   the contract no longer records with its pinned hash. In that last case the
+   result also carries `grading_unapproved` as a second reason and the paths
+   in `unapproved_grading`, so the existing message that names the files is
+   kept. `grading_unapproved` is now a sub-case of `gate_not_approved` rather
+   than a separate gate;
+4. **`contract_mismatch`** — `05-gate.md` is parsed again in memory and the
+   result compared with `contract.json`: the ordered list of criteria with
+   every field except `grading` (`id`, `argv`, `expect`, `timeout_s`,
+   `artifacts`, `tier`, and any extra key), and `total_budget_s`. A
+   `05-gate.md` that no longer parses is a mismatch too. `grading` is
+   compared by its keys: each recorded path must be a grading file of that
+   criterion's argv now, or be absent from disk. Its hashes are not compared
+   with the tree: a grading file legitimately changes between derive and
+   Stop, and that case is ADR-0023's per-criterion `unverified` with the
+   paths; the hashes that matter are the approval's pins, which step 3 checks.
+   The result carries `mismatch`, a short list of what differs.
+
+- **Who requires the approval.** The Stop gate (both pipelines, so
+  `/gatekit:verify` too) and `contract run` require it. `contract baseline`
+  does not: `/gatekit:gate` runs it between `derive` and the approval, so it
+  checks steps 2 and 4 only. `contract.execute` itself is unchanged, so a
+  caller inside gatekit decides; the three CLI/hook entry points above are
+  the only callers.
+- **Blocking.** Both new reasons block in the Stop gate like any other
+  `unverified` (block count, `MAX_BLOCKS`, `stop_hook_active`, stand-down of
+  ADR-0024 unchanged), with a message in `output_lang` that says what to do:
+  for `gate_not_approved`, restore `05-gate.md` and fix the code, or re-run
+  `/gatekit:gate` for a new approval; for `contract_mismatch`, run `contract
+  derive` to restore the contract from the approved gate and fix the code,
+  or re-run `/gatekit:gate` if the criteria must change.
+- **No reuse across a refusal.** The Stop gate runs the check before it looks
+  at `runs/contract-last.json`, and a refusal has no criteria, so it is never
+  recorded. A record also carries `contract_sha256`, the hash of
+  `contract.json` it was judged under; `same_tree_record` (and so
+  `reusable_last` and the reuse in the Stop gate) refuses a record without it
+  or with another hash. `.gatekit` is outside the tree fingerprint, so
+  without this an edited `contract.json` would have reused the last result.
+
+## Consequences
+
+- An approval can no longer be forged by a file write, and the Stop gate no
+  longer judges criteria the user did not approve.
+- A project that never approves `05-gate.md` (for example with
+  `enforce_spec_before_code: false`) gets `gate_not_approved` from the Stop
+  gate under `build`/`verify` instead of a judgement. That is the honest
+  verdict: the criteria were never agreed. `/gatekit:gate` always approves
+  before `/gatekit:build`, so the normal flow is unaffected.
+- Stop-gate and `contract run` cost one more parse of `05-gate.md` plus the
+  grading-file hashes it already computes at derive; no criterion runs twice.
+
+### Remaining trust boundary
+
+- **The host session can still run `gatekit approve` itself.** Approval is a
+  user act mediated by `/gatekit:gate`'s `AskUserQuestion`; the hook cannot
+  tell a user-approved invocation from one the model ran on its own. Loosening
+  `05-gate.md`, re-deriving and approving in the host session therefore still
+  passes, as ADR-0023 already states.
+- **Before approval**, a write through an opaque command (a Python one-liner,
+  `node -e`, `git checkout`, …) is denied as `opaque` by the existing rule,
+  whatever it names. **After approval** that rule is off; only the narrow check
+  above runs, so an opaque command that does not spell the path
+  (`python3 -c "open('.gate'+'kit/appro'+'vals.json','w')"`, `cd .gatekit &&
+  python3 -c …`, a script file, an archive extracted over the root) is not
+  seen. Its effect is bounded by decision 2: an edited `contract.json` is
+  `contract_mismatch`, and an `approvals.json` whose hash or pins no longer fit
+  is `gate_not_approved`. What still passes is a forged approval that is
+  consistent with a re-derived contract — the same outcome as the host
+  running `gatekit approve`.
+- Other `.gatekit/**` files (session ledgers, `runs/contract-last.json`, job
+  directories) stay writable as before. *(Superseded by amendment B below:
+  everything under `.gatekit/` but `config.json` and `eval/**` is protected.)*
+- The Bash reading is static: a glob under `shopt -s dotglob`, `git clean -x`
+  (opaque, and it does not name the file), or a script file that writes the
+  files are not seen after approval.
+- **False positives accepted.** An opaque command that only reads a
+  protected file by name (`python3 -c "…open('.gatekit/contract.json')…"`) is
+  denied in every session; `cat`, `jq` and the Read tool stay allowed. A
+  command that names `.gatekit` and writes a file called `approvals.json` or
+  `contract.json` elsewhere is denied too.
+
+**Contract changes** (`docs/ARCHITECTURE.md`): §2 notes that the two files are
+written only by gatekit; §3 the write and bash gates' protected-file rule and
+the Stop gate's integrity check; §5 `contract.integrity`,
+`gate_not_approved`, `contract_mismatch`, the baseline exception and
+`contract_sha256` in the Stop record; §7 that an approval is not a file
+write; §13 the tests; §14 `write.protected_state`, `contract.integrity`,
+`contract.mismatch` and the reason constants.
+
+## Rejected alternatives
+
+- **Sign or MAC the files.** Any key the hooks can read, the session can read;
+  it moves the secret, not the boundary.
+- **Make `execute` check the approval for every caller.** Baseline runs before
+  approval by design, and the many direct callers in tests and tools are not
+  entry points a session can reach; the check belongs where a verdict is
+  issued.
+- **Compare `grading` hashes with the tree in `contract_mismatch`.** That turns
+  every test edited during the build into a contract mismatch and drops
+  ADR-0023's per-criterion path list.
+- **Judge every Bash command after approval.** That changes post-approval
+  behaviour for every command (opaque denials would return); the narrow check
+  acts only on findings that touch the two files.
+
+## Open questions
+
+- **PowerShell.** Claude Code's PowerShell tool does not pass through the
+  `Bash` matcher, so a PowerShell command that writes either file is not seen
+  by any gate. Covering it (a matcher and a static reading of PowerShell
+  syntax) is a later ADR.
+- Whether `runs/contract-last.json` and the session ledger (`active_pipeline`,
+  `stop.stood_down`) need the same protection: a forged record or a cleared
+  pipeline would let a Stop pass without a run. *(Answered yes by amendment
+  B.)*
+- An opaque command after approval that does not spell the path (above;
+  narrowed by amendment A, still open).
+
+## Amendment (2026-10-04): what a security review of the Bash reading found
+
+Status: accepted 2026-10-04 (owner approval in session), before the 0.16.5
+release.
+
+A review probed the Bash gate with the forms below; each reached a protected
+file unseen, before or after approval.
+
+### A. Four shell forms
+
+1. **An interpreter fed its script on stdin was not opaque.** Only `-c`,
+   `-e`, `-E` and `-` counted as inline code, so `python3 <<PY … PY`, `node
+   <<'JS' … JS`, `echo '…' | python3` and `python3 < script.py` were allowed
+   before approval, and after approval `python3 <<PY` with
+   `json.dump({}, open('.gatekit/contract.json','w'))` in the body passed
+   although the body spells the path. **Decision:** an interpreter (the
+   existing list, `perl` included) with no script operand whose stdin is fed —
+   a here-document or here-string, a `<` redirect, or the right side of a
+   pipe — is opaque. A file operand or `-m module` keeps today's reading
+   (`python3 script.py < in.txt`, `python3 -m json.tool …` stay allowed);
+   `python3 --version` without stdin is not affected. The opaque-text check
+   reads the raw command, here-document bodies included, so a body that names
+   a protected file is denied after approval too.
+2. **A link made and written in one command.** `ln -s .gatekit/approvals.json
+   l && echo x > l`, `ln -s ../.gatekit/approvals.json sub/l; cp x sub/l` and
+   `ln .gatekit/approvals.json h2; echo x >> h2` wrote through a name the
+   realpath check could not yet follow (the link does not exist when the hook
+   runs). **Decision:** an `ln` with any flags — and `cp -l`, `cp -s`,
+   `--link`, `--symbolic-link` — whose source is a protected file or a
+   directory that contains one is denied. A relative source is resolved
+   against the cwd and, as a symlink's own rule, against the directory the
+   link lands in.
+3. **Variable-built paths.** `d=.gatekit; echo x > $d/approvals.json` and
+   `d=.gatekit; cp sub/approvals.json $d/` were opaque, so only the
+   pre-approval rule saw them. **Decision:** a target whose earlier segment
+   holds a variable but whose last segment is literal goes to the base-name
+   check (the name is protected and the text names `.gatekit`), and a target
+   or removed path that uses a variable assigned, earlier in the same command,
+   a value spelling a `.gatekit` directory (`d=.gatekit`, `export d=…`,
+   `D="$PWD/.gatekit"`) counts.
+4. **git restores by directory pathspec.** `git checkout -- .gatekit`, `git
+   restore .gatekit`, `git checkout HEAD~1 -- .gatekit`, `git restore
+   --source=X .gatekit` name the directory, not the file. **Decision:** the
+   pathspec operands of `git checkout`, `restore`, `reset` and `stash push`
+   (options that take an operand skipped; after `git -C dir`, resolved there)
+   are denied when one is or lies inside a protected path or is a `.gatekit`
+   directory. `git -C dir` is now read as an option, so the subcommand behind
+   it is known — before approval `git -C src checkout …` is `opaque` like any
+   other `git checkout`. `git checkout -- .`, `git reset --hard` and `git
+   stash pop` stay a trust boundary: they restore what is committed, which
+   includes the user's own approval, and refusing them would refuse ordinary
+   work.
+
+### B. The whole of `.gatekit/` is gatekit's
+
+The review's largest remaining hole was the files decision 1 left writable
+(see "Remaining trust boundary" and the open questions above). A forged
+`runs/contract-last.json` carrying the current `contract_sha256` and tree
+fingerprint is reused by the Stop gate as a judgement that never ran; a
+session ledger with `stop.stood_down` set makes the Stop gate stand down; a
+forged `jobs/*/status.json` or `attempts.json` changes the unpassed-task and
+retry checks.
+
+**Decision.** Everything under `.gatekit/` is written only by gatekit itself,
+except `.gatekit/config.json` (the user's settings) and `.gatekit/eval/**`
+(the evaluator's scratch, ADR-0026). The rule of decision 1 applies unchanged
+to that wider set, in both gates:
+
+- `write.protected_state` returns `.gatekit/<rest>` for any path below a
+  `.gatekit` directory (any project's, any case, after the same
+  canonicalisation, as written and after realpath) unless `<rest>` is exactly
+  `config.json` or starts with `eval`. The `.gatekit` directory itself is not
+  protected as a write target, so `mkdir .gatekit` stays allowed; deleting or
+  moving it is denied, as before. `samefile` compares with the key files
+  (`approvals.json`, `contract.json`, `baseline.json`, `attempts.json`,
+  `runs/contract-last.json`).
+- The Bash gate reads every command for the wider set: a copy, move or link
+  into a `.gatekit` directory of anything but `config.json`/`eval`, or of a
+  directory by its contents; a glob that can match below a `.gatekit`
+  directory; a `tar -C` / `unzip -d` directory and the start points of `find
+  -exec`/`-delete` that are or lie in gatekit's state; an opaque command whose
+  text spells a gatekit-owned `.gatekit` path (the bare directory included,
+  so `pathlib.Path('.gatekit', …)` counts) or that runs from inside one. The
+  base-name check for an unknown cwd and for `$d/name` uses
+  `write.PROTECTED_NAMES`, the names gatekit writes there.
+- **gatekit's own writers are not affected.** The hooks and the CLI write
+  these files in process — `ledger.save`, `contract.save_last`, the job
+  runner, `attempts.json`, `baseline.json`, `runs/hook-errors.log` — never
+  through a tool call the gates see. `/gatekit:setup` creates `.gatekit/` and
+  `config.json` through `workers set-default`. `jobs clean` is the CLI. The
+  stamp the compact hook writes is in `spec/PROGRESS.md`. The one prose
+  instruction that had the host write into `.gatekit/` — the evaluator
+  prompt for `jobs evaluate --prompt` — now goes to
+  `.gatekit/eval/evaluator-prompt.md`.
+- **Deleting the state while the plugin is active is refused.** `rm -rf
+  .gatekit` from an agent session is denied; `UNINSTALL.md` keeps its order
+  (remove the plugin first, then delete) and says so. A user's own terminal
+  is not a tool call and is not affected.
+- **Message.** The deny reason (en/ko) names the path, says everything under
+  `.gatekit/` but `config.json` and `eval/` is gatekit's own state, and points
+  to `/gatekit:gate` and to `UNINSTALL.md`.
+
+### Consequences of the amendment
+
+- A judgement, a stand-down or a job outcome can no longer be forged by a
+  plain write. Reads are unchanged: `cat`, `jq`, `grep`, `diff`, `ls`,
+  `python3 -m json.tool`, `git diff`/`log`/`show`/`add`/`commit`/`status`,
+  and backups out of `.gatekit` (`tar -czf`, `zip -r`, `rsync -a .gatekit/
+  …`, `cp -a .gatekit …`).
+- `enforce_spec_before_code: false` turns off rule (a) only. A project that
+  never approves `05-gate.md` gets `gate_not_approved` from the Stop gate
+  under `build`/`verify` (decision 2), which the manual now states.
+- **False positives accepted.** An opaque command (`python3 -c`, `awk`,
+  `xargs`, `find -exec`, `git checkout <branch>`, …) whose text names a
+  gatekit-owned `.gatekit` path is denied even when it only reads, and so is
+  a command line that pairs an opaque command with any such mention; a
+  command that names `.gatekit` and writes a file elsewhere whose name gatekit
+  uses (`status.json`, `task.json`, …) is denied too.
+
+### What still remains (trust boundary)
+
+- **Opaque commands that do not spell the path** after approval: a string
+  built at run time (`'.gate' + 'kit'`), a script file (`python3 tool.py`),
+  `patch`, `git apply`, a program the gate does not know (`sponge`,
+  `osascript`). Before approval they are `opaque` like any other.
+- **Archives extracted over the project root** (`tar -xf a.tar`, `unzip
+  a.zip` without `-d`) and `find . -name approvals.json -delete`: the
+  directory is the root, not `.gatekit`, and refusing them would refuse
+  ordinary work.
+- **git restores of the whole tree** — `git checkout -- .`, `git reset
+  --hard`, `git stash pop`, `git checkout <branch>`, `git clean -fdx` — bring
+  back or remove what is committed or ignored; they are the user's history,
+  not a forgery, and they stay allowed.
+- **The PowerShell tool** does not pass through the `Bash` matcher (open
+  question above).
+- The host session can still run `gatekit approve` (decision 1's boundary).

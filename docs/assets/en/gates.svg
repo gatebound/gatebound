@@ -1,0 +1,266 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1716" viewBox="0 0 1440 1716" font-family="-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
+
+  <rect x="0" y="0" width="1440" height="1716" fill="#FBF9F5"/>
+  <!-- ===== Title ===== -->
+  <text x="72" y="72" font-size="34" font-weight="700" fill="#12312E">Nine hook gates</text>
+  <text x="72" y="104" font-size="17" fill="#6B6459">The gate scripts on five events of a Claude Code session</text>
+  <rect x="1084" y="46" width="284" height="66" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+  <rect x="1106" y="66" width="14" height="14" rx="3" fill="#B3382C"/>
+  <text x="1130" y="78" font-size="14" fill="#4A443B">Blocks</text>
+  <rect x="1226" y="66" width="14" height="14" rx="3" fill="#8C8577"/>
+  <text x="1250" y="78" font-size="14" fill="#4A443B">Never blocks</text>
+  <text x="1106" y="100" font-size="13" fill="#8C8577">Registered in plugin/hooks/hooks.json</text>
+  <!-- ===== Session timeline rail ===== -->
+  <text x="72" y="150" font-size="13" fill="#8C8577" letter-spacing="1">SESSION TIMELINE</text>
+  <line x1="96" y1="196" x2="1344" y2="196" stroke="#C9C1B2" stroke-width="3"/>
+  <path d="M 1344 196 L 1332 189 L 1332 203 Z" fill="#C9C1B2"/>
+  <circle cx="170" cy="196" r="9" fill="#8C8577"/>
+  <text x="170" y="178" font-size="13" fill="#8C8577" text-anchor="middle">on each prompt</text>
+  <text x="170" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">UserPromptSubmit</text>
+  <text x="170" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#8C8577">prompt</tspan></text>
+  <circle cx="520" cy="196" r="9" fill="#B3382C"/>
+  <text x="520" y="178" font-size="13" fill="#8C8577" text-anchor="middle">before a tool call</text>
+  <text x="520" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="520" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#B3382C">write</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#B3382C">bash</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#B3382C">powershell</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#B3382C">spawn</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#8C8577">skill</tspan></text>
+  <circle cx="850" cy="196" r="9" fill="#8C8577"/>
+  <text x="850" y="178" font-size="13" fill="#8C8577" text-anchor="middle">after a tool call</text>
+  <text x="850" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PostToolUse</text>
+  <text x="850" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#8C8577">question</tspan></text>
+  <circle cx="1070" cy="196" r="9" fill="#8C8577"/>
+  <text x="1070" y="178" font-size="13" fill="#8C8577" text-anchor="middle">before compaction</text>
+  <text x="1070" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreCompact</text>
+  <text x="1070" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#8C8577">compact</tspan></text>
+  <circle cx="1270" cy="196" r="9" fill="#B3382C"/>
+  <text x="1270" y="178" font-size="13" fill="#8C8577" text-anchor="middle">at each turn end</text>
+  <text x="1270" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Stop</text>
+  <text x="1270" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#B3382C">stop</tspan></text>
+  <text x="685" y="178" font-size="12.5" fill="#B5AD9F" text-anchor="middle">tool runs</text>
+  <text x="72" y="288" font-size="13" fill="#8C8577" letter-spacing="1">GATES THAT BLOCK — deny on PreToolUse, block on Stop</text>
+  <!-- ===== write ===== -->
+  <g>
+  <rect x="72" y="300" width="400" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="72" y="300" width="400" height="6" rx="3" fill="#B3382C"/>
+  <text x="96" y="338" font-size="20" font-weight="700" fill="#12312E">write</text>
+  <rect x="380" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="415.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">Blocks</text>
+  <text x="96" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="96" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Write|Edit|MultiEdit|NotebookEdit|apply_patch</text>
+  <line x1="96" y1="397" x2="448" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="96" y="421" font-size="13.5" fill="#2E2A24">Blocks — three rules, each can refuse alone</text>
+  <text x="96" y="447" font-size="13" font-weight="700" fill="#2E2A24">(c) Protected state · always, first (ADR-0027)</text>
+  <text x="96" y="467" font-size="13" fill="#6B6459">Only gatebound writes under .gatebound/.</text>
+  <text x="96" y="487" font-size="13" fill="#6B6459">The only exceptions: config.json and eval/**.</text>
+  <text x="96" y="507" font-size="13" fill="#6B6459">Refused before and after approval; links followed.</text>
+  <text x="96" y="537" font-size="13" font-weight="700" fill="#2E2A24">(a) Spec first · enforce_spec_before_code</text>
+  <text x="96" y="557" font-size="13" fill="#6B6459">With gatebound spec files in spec/ and 05-gate.md</text>
+  <text x="96" y="577" font-size="13" fill="#6B6459">not approved ok, writes off the allowlist are refused.</text>
+  <text x="96" y="597" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/**  docs/**  README*  root *.md</text>
+  <text x="96" y="627" font-size="13" font-weight="700" fill="#2E2A24">(b) Task write scope · GATEBOUND_TASK_ID</text>
+  <text x="96" y="647" font-size="13" fill="#6B6459">A worker writes only inside task.json write_scope.</text>
+  <text x="96" y="667" font-size="13" fill="#6B6459">No docs allowlist. Unreadable scope is refused.</text>
+  </g>
+  <!-- ===== bash ===== -->
+  <g>
+  <rect x="492" y="300" width="262" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="492" y="300" width="262" height="6" rx="3" fill="#B3382C"/>
+  <text x="516" y="338" font-size="20" font-weight="700" fill="#12312E">bash</text>
+  <rect x="662" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="697.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">Blocks</text>
+  <text x="516" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="516" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Bash</text>
+  <line x1="516" y1="397" x2="730" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="516" y="421" font-size="13.5" fill="#2E2A24">Blocks — writes by shell commands</text>
+  <text x="516" y="447" font-size="13" fill="#6B6459">Reads the command without</text>
+  <text x="516" y="467" font-size="13" fill="#6B6459">running it; extracts targets.</text>
+  <text x="516" y="487" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">&gt;  tee  sed -i  cp  mv  rm …</text>
+  <text x="516" y="507" font-size="13" fill="#6B6459">Judges each path with the</text>
+  <text x="516" y="527" font-size="13" fill="#6B6459">same function as write.</text>
+  <text x="516" y="557" font-size="13" font-weight="700" fill="#2E2A24">Rule (c) is always checked.</text>
+  <text x="516" y="577" font-size="13" fill="#6B6459">While rule (a) or (b) is live,</text>
+  <text x="516" y="597" font-size="13" fill="#6B6459">unreadable commands are refused.</text>
+  <text x="516" y="617" font-size="13" fill="#6B6459">A worker's approve is refused.</text>
+  </g>
+  <!-- ===== powershell ===== -->
+  <g>
+  <rect x="774" y="300" width="262" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="774" y="300" width="262" height="6" rx="3" fill="#B3382C"/>
+  <text x="798" y="338" font-size="20" font-weight="700" fill="#12312E">powershell</text>
+  <rect x="944" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="979.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">Blocks</text>
+  <text x="798" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="798" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PowerShell</text>
+  <line x1="798" y1="397" x2="1012" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="798" y="421" font-size="13.5" fill="#2E2A24">Blocks — writes by PowerShell</text>
+  <text x="798" y="447" font-size="13" fill="#6B6459">Reads PowerShell syntax:</text>
+  <text x="798" y="467" font-size="13" fill="#6B6459">cmdlets, aliases, redirection.</text>
+  <text x="798" y="497" font-size="13" fill="#6B6459">Applies the bash gate's checks</text>
+  <text x="798" y="517" font-size="13" fill="#6B6459">in the same order:</text>
+  <text x="798" y="537" font-size="13" fill="#6B6459">worker approve → rule (c)</text>
+  <text x="798" y="557" font-size="13" fill="#6B6459">→ (a)/(b) · unreadable refused</text>
+  <text x="798" y="587" font-size="13" fill="#6B6459">Windows paths are normalised</text>
+  <text x="798" y="607" font-size="13" fill="#6B6459">by the write gate's function.</text>
+  </g>
+  <!-- ===== spawn ===== -->
+  <g>
+  <rect x="1056" y="300" width="312" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="1056" y="300" width="312" height="6" rx="3" fill="#B3382C"/>
+  <text x="1080" y="338" font-size="20" font-weight="700" fill="#12312E">spawn</text>
+  <rect x="1276" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="1311.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">Blocks</text>
+  <text x="1080" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="1080" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Agent|Task|collaborationspawn_agent</text>
+  <line x1="1080" y1="397" x2="1344" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="1080" y="421" font-size="13.5" fill="#2E2A24">Blocks — unscoped subagents</text>
+  <text x="1080" y="447" font-size="13" fill="#6B6459">The prompt must carry a gatebound-scope</text>
+  <text x="1080" y="467" font-size="13" fill="#6B6459">fence, parsed as JSON.</text>
+  <text x="1080" y="487" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">{"write_scope": […], "stop_when": …}</text>
+  <text x="1080" y="517" font-size="13" fill="#6B6459">Refused when the fence is missing,</text>
+  <text x="1080" y="537" font-size="13" fill="#6B6459">breaks a field rule, or overlaps a</text>
+  <text x="1080" y="557" font-size="13" fill="#6B6459">scope already active in this session.</text>
+  <text x="1080" y="587" font-size="13" fill="#6B6459">Codex collaborationspawn_agent hides</text>
+  <text x="1080" y="607" font-size="13" fill="#6B6459">the prompt: allowed, recorded as</text>
+  <text x="1080" y="627" font-size="13" fill="#6B6459">spawn_unscoped.</text>
+  </g>
+  <!-- ===== stop ===== -->
+  <rect x="72" y="704" width="1296" height="372" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="72" y="704" width="1296" height="6" rx="3" fill="#B3382C"/>
+  <text x="96" y="742" font-size="20" font-weight="700" fill="#12312E">stop</text>
+  <text x="152" y="742" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Stop</text>
+  <text x="196" y="742" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">timeout 600</text>
+  <rect x="1196" y="726" width="150" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="1271.0" y="742" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">Blocks · max 3 times</text>
+  <text x="96" y="774" font-size="14" fill="#2E2A24">Blocks — a turn end with the contract unmet: any criterion that is fail or unverified.</text>
+  <text x="96" y="796" font-size="13" fill="#6B6459">Runs the contract only when .gatebound/contract.json exists and active_pipeline is build or verify; otherwise allows and records unverified. Never blocks when stop_hook_active.</text>
+  <line x1="96" y1="812" x2="1344" y2="812" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="96" y="844" font-size="16" font-weight="700" fill="#12312E">The 3-block cap</text>
+  <rect x="96" y="862" width="88" height="42" rx="8" fill="#F8E7E4" stroke="#E0A79E" stroke-width="1.2"/>
+  <text x="140.0" y="880" font-size="12" fill="#B3382C" text-anchor="middle">block 1</text>
+  <text x="140.0" y="897" font-size="12" fill="#8A3A30" text-anchor="middle">names criteria</text>
+  <path d="M 188 883 L 200 883" stroke="#C9C1B2" stroke-width="2"/>
+  <path d="M 200 883 L 192 878 L 192 888 Z" fill="#C9C1B2"/>
+  <rect x="202" y="862" width="88" height="42" rx="8" fill="#F8E7E4" stroke="#E0A79E" stroke-width="1.2"/>
+  <text x="246.0" y="880" font-size="12" fill="#B3382C" text-anchor="middle">block 2</text>
+  <text x="246.0" y="897" font-size="12" fill="#8A3A30" text-anchor="middle">names criteria</text>
+  <path d="M 294 883 L 306 883" stroke="#C9C1B2" stroke-width="2"/>
+  <path d="M 306 883 L 298 878 L 298 888 Z" fill="#C9C1B2"/>
+  <rect x="308" y="862" width="88" height="42" rx="8" fill="#F8E7E4" stroke="#E0A79E" stroke-width="1.2"/>
+  <text x="352.0" y="880" font-size="12" fill="#B3382C" text-anchor="middle">block 3</text>
+  <text x="352.0" y="897" font-size="12" fill="#8A3A30" text-anchor="middle">names criteria</text>
+  <path d="M 400 883 L 412 883" stroke="#C9C1B2" stroke-width="2"/>
+  <path d="M 412 883 L 404 878 L 404 888 Z" fill="#C9C1B2"/>
+  <rect x="414" y="862" width="100" height="42" rx="8" fill="#EFEBE2" stroke="#C9C1B2" stroke-width="1.2"/>
+  <text x="464" y="888" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">stands down</text>
+  <text x="96" y="932" font-size="13.5" fill="#4A443B">When block_count reaches 3, the session may end.</text>
+  <text x="96" y="953" font-size="13.5" fill="#4A443B">A gate that cannot be satisfied must not</text>
+  <text x="96" y="974" font-size="13.5" fill="#4A443B">hold the user hostage.</text>
+  <text x="96" y="999" font-size="13.5" font-weight="700" fill="#B3382C">Standing down still records stop.final_verdict,</text>
+  <text x="96" y="1020" font-size="13.5" font-weight="700" fill="#B3382C">and that value is never blank.</text>
+  <line x1="536" y1="832" x2="536" y2="1054" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="560" y="844" font-size="16" font-weight="700" fill="#12312E">Criterion tiers and budget (ADR-0024)</text>
+  <text x="560" y="874" font-size="13.5" fill="#4A443B">Under build, only "tier": "turn" criteria run;</text>
+  <text x="560" y="895" font-size="13.5" fill="#4A443B">verify-tier ones are deferred to /gatebound:verify.</text>
+  <text x="560" y="916" font-size="13.5" fill="#4A443B"></text>
+  <text x="560" y="937" font-size="12.5" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">stop.budget_s  default 120 s · cap 570 s</text>
+  <text x="560" y="958" font-size="13.5" fill="#4A443B">Once spent, no new criterion starts.</text>
+  <text x="560" y="979" font-size="13.5" fill="#4A443B">Deferred ones do not block, but are not ok:</text>
+  <text x="560" y="1000" font-size="13.5" fill="#4A443B">recorded unverified, run first next turn end.</text>
+  <text x="560" y="1021" font-size="13.5" fill="#4A443B"></text>
+  <text x="560" y="1042" font-size="13.5" font-weight="700" fill="#2E2A24">Under verify, everything runs: no tiers, no budget.</text>
+  <line x1="976" y1="832" x2="976" y2="1054" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="1000" y="844" font-size="16" font-weight="700" fill="#12312E">Standing down (ADR-0024)</text>
+  <text x="1000" y="874" font-size="13.5" fill="#4A443B">Once a settled job has its verdict recorded</text>
+  <text x="1000" y="895" font-size="13.5" fill="#4A443B">(hand-off check ok, or final_verdict after 3 blocks)</text>
+  <text x="1000" y="916" font-size="13.5" fill="#4A443B">later turn ends run nothing and are allowed.</text>
+  <text x="1000" y="937" font-size="12.5" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">stop.stood_down</text>
+  <text x="1000" y="958" font-size="13.5" fill="#4A443B"></text>
+  <text x="1000" y="979" font-size="13.5" font-weight="700" fill="#2E2A24">Judges again on:</text>
+  <text x="1000" y="1000" font-size="13.5" fill="#4A443B">/gatebound:build or /gatebound:verify called again,</text>
+  <text x="1000" y="1021" font-size="13.5" fill="#4A443B">a new job, a redelegated task.</text>
+  <text x="1000" y="1042" font-size="13.5" fill="#4A443B">Tasks ended by jobs stop: fail, not blocked.</text>
+  <text x="72" y="1116" font-size="13" fill="#8C8577" letter-spacing="1">GATES THAT NEVER BLOCK — record, then allow</text>
+  <!-- ===== prompt ===== -->
+  <g>
+  <rect x="72" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="72" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="96" y="1166" font-size="20" font-weight="700" fill="#12312E">prompt</text>
+  <rect x="259" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="309.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">Never blocks</text>
+  <text x="96" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">UserPromptSubmit</text>
+  <line x1="96" y1="1206" x2="357" y2="1206" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="96" y="1230" font-size="13.5" fill="#2E2A24">Does — ledger and context</text>
+  <text x="96" y="1256" font-size="13" fill="#6B6459">Creates the session ledger, detects</text>
+  <text x="96" y="1276" font-size="13" fill="#6B6459">output_lang, records active_pipeline</text>
+  <text x="96" y="1296" font-size="13" fill="#6B6459">on a /gatebound:&lt;pipeline&gt; prompt, injects</text>
+  <text x="96" y="1316" font-size="13" fill="#6B6459">a context block of at most 600 chars.</text>
+  </g>
+  <!-- ===== skill ===== -->
+  <g>
+  <rect x="401" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="401" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="425" y="1166" font-size="20" font-weight="700" fill="#12312E">skill</text>
+  <rect x="588" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="638.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">Never blocks</text>
+  <text x="425" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="425" y="1211" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Skill</text>
+  <line x1="425" y1="1225" x2="686" y2="1225" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="425" y="1249" font-size="13.5" fill="#2E2A24">Does — arms the Stop gate (ADR-0032)</text>
+  <text x="425" y="1275" font-size="13" fill="#6B6459">A gatebound build or verify skill records</text>
+  <text x="425" y="1295" font-size="13" fill="#6B6459">active_pipeline and re-arms the Stop</text>
+  <text x="425" y="1315" font-size="13" fill="#6B6459">gate. Any other skill leaves the</text>
+  <text x="425" y="1335" font-size="13" fill="#6B6459">pipeline alone.</text>
+  </g>
+  <!-- ===== question ===== -->
+  <g>
+  <rect x="730" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="730" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="754" y="1166" font-size="20" font-weight="700" fill="#12312E">question</text>
+  <rect x="917" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="967.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">Never blocks</text>
+  <text x="754" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PostToolUse</text>
+  <text x="754" y="1211" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">AskUserQuestion | Write…</text>
+  <line x1="754" y1="1225" x2="1015" y2="1225" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="754" y="1249" font-size="13.5" fill="#2E2A24">Does — counts questions</text>
+  <text x="754" y="1275" font-size="13" fill="#6B6459">Only interview has a budget (default 2).</text>
+  <text x="754" y="1295" font-size="13" fill="#6B6459">Past it, records budget_exceeded.</text>
+  <text x="754" y="1315" font-size="13" fill="#6B6459">Write-type calls are only noted as writes.</text>
+  <text x="754" y="1335" font-size="13" fill="#6B6459">PostToolUse has no block channel.</text>
+  </g>
+  <!-- ===== compact ===== -->
+  <g>
+  <rect x="1059" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="1059" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="1083" y="1166" font-size="20" font-weight="700" fill="#12312E">compact</text>
+  <rect x="1246" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="1296.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">Never blocks</text>
+  <text x="1083" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreCompact</text>
+  <line x1="1083" y1="1206" x2="1344" y2="1206" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="1083" y="1230" font-size="13.5" fill="#2E2A24">Does — build state into a file</text>
+  <text x="1083" y="1256" font-size="13" fill="#6B6459">With a build in progress, stamps job</text>
+  <text x="1083" y="1276" font-size="13" fill="#6B6459">and task states into its own section</text>
+  <text x="1083" y="1296" font-size="13" fill="#6B6459">of spec/PROGRESS.md (ADR-0013).</text>
+  <text x="1083" y="1316" font-size="13" fill="#6B6459">With no build, does nothing.</text>
+  </g>
+  <!-- ===== exit 0 rule ===== -->
+  <rect x="72" y="1392" width="640" height="196" rx="12" fill="#0E5C55"/>
+  <text x="100" y="1428" font-size="18" font-weight="700" fill="#FFFFFF">Every hook always exits 0</text>
+  <text x="100" y="1458" font-size="14" fill="#BFDCD6">A block is JSON on stdout, never an exit code.</text>
+  <rect x="100" y="1474" width="270" height="34" rx="6" fill="#0A4A44"/>
+  <text x="116" y="1496" font-size="13" fill="#9FCCC4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse → deny</text>
+  <rect x="386" y="1474" width="270" height="34" rx="6" fill="#0A4A44"/>
+  <text x="402" y="1496" font-size="13" fill="#9FCCC4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Stop → block</text>
+  <text x="100" y="1536" font-size="13.5" fill="#DDEBE8">An exception leaves one line in .gatebound/runs/hook-errors.log.</text>
+  <text x="100" y="1560" font-size="13.5" fill="#DDEBE8">A broken hook degrades to "allow and log"; it never kills the session.</text>
+  <!-- ===== projects without .gatebound/ ===== -->
+  <rect x="732" y="1392" width="636" height="196" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <text x="760" y="1428" font-size="18" font-weight="700" fill="#12312E">Projects without .gatebound/</text>
+  <text x="760" y="1458" font-size="14" fill="#4A443B">The plugin installs globally, so hooks fire in every project.</text>
+  <text x="760" y="1488" font-size="13.5" fill="#4A443B">prompt, skill, spawn, question and stop allow without creating state.</text>
+  <text x="760" y="1512" font-size="13.5" fill="#4A443B">compact does nothing: there is no build in progress.</text>
+  <text x="760" y="1536" font-size="13.5" fill="#4A443B">In write, bash and powershell, rule (a) applies only with gatebound spec</text>
+  <text x="760" y="1560" font-size="13.5" fill="#4A443B">files, rule (b) only in a worker. Rule (c) applies everywhere, always.</text>
+  <!-- ===== Perf note ===== -->
+  <rect x="72" y="1612" width="1296" height="60" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+  <text x="100" y="1638" font-size="15" font-weight="700" fill="#12312E">Performance</text>
+  <text x="100" y="1660" font-size="13.5" fill="#4A443B">Each gate finishes within 5 s on a normal project (hook timeout 10 s). Only the Stop hook has timeout 600 s; the gate cuts the contract run at 570 s.</text>
+
+</svg>
