@@ -4,6 +4,38 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.1 — 2026-10-09
+
+Three defects found in a timed end-to-end build of a 16-feature app
+(ADR-0040).
+
+### Fixed
+
+- **A finished subagent releases its write scope.** The spawn gate never
+  removed a recorded scope, so after the first parallel round every later
+  delegation that overlapped a finished agent's scope was denied and the
+  host session built the rest alone. The spawn gate now also runs on
+  PostToolUse and PostToolUseFailure for `Agent|Task` and on SubagentStop:
+  a foreground agent's scope is released when its call returns or fails, a
+  background agent's when it stops. The ledger keeps every hook's scope
+  changes when two hooks save at once.
+- **The Stop gate waits for a running background subagent.** `/gatebound:verify`
+  starts its evaluator in the background; the Stop gate ran the contract at
+  the same moment, the two collided on the test server's port and the E2E
+  criterion came back `unverified`. While Claude Code reports a background
+  subagent that the spawn gate recorded as still running, the Stop gate now
+  judges nothing and lets the turn end, at most three Stops in a row,
+  without rewriting the last verdict; the Stop after the agent finishes
+  judges.
+- **The tokens gate reads the shipped `shadcn-neutral` preset.** Its colours
+  are bare HSL triplets (`0 0% 9%`) used as `hsl(var(--primary))`. The gate
+  now reads a triplet in a colour group as `hsl(...)`, compares colour
+  functions across comma, space and slash syntax, and treats a colour
+  function with `var(...)` among its colour channels as a token reference
+  rather than a literal; a `var()` only in the alpha slot is still a
+  hard-coded colour. Before, it found no colour tokens in that preset and
+  `/gatebound:tasks` left it out.
+
 ## 0.17.0 — 2026-10-09
 
 gatebound is the continuation of gatekit 0.16.15 under its own name: same

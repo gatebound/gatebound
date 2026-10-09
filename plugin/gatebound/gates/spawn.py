@@ -143,8 +143,60 @@ def owner_label(tool_input: Dict[str, Any], prompt: str) -> str:
     return hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()[:12]
 
 
+#: Events after which a spawn call's scope may be released (ADR-0040).
+RELEASE_EVENTS = ("PostToolUse", "PostToolUseFailure", "SubagentStop")
+
+
+def _released(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """PostToolUse / PostToolUseFailure on a spawn tool, or SubagentStop:
+    release a finished agent's scope.
+
+    A foreground agent has finished when its spawn call returns or fails. A
+    background one returns at once (``async_launched``) with its agent id,
+    which is tied to the scope until SubagentStop names that id; a SubagentStop
+    that comes first is remembered so the late attach releases at once.
+    Never denies anything.
+    """
+    root = hookio.event_root(event)
+    if not paths.state_dir(root).is_dir():
+        return hookio.allow()
+    led = ledger.Ledger.load(root, hookio.session_id(event))
+    name = event.get("hook_event_name")
+    if name == "SubagentStop":
+        agent_id = event.get("agent_id")
+        if not agent_id:
+            return hookio.allow()
+        released = led.release_scope(agent_id=str(agent_id))
+    else:
+        tool_use_id = event.get("tool_use_id")
+        if not tool_use_id:
+            return hookio.allow()
+        response = event.get("tool_response")
+        response = response if isinstance(response, dict) else {}
+        if name == "PostToolUse" and (
+                response.get("isAsync") or response.get("status") == "async_launched"):
+            agent_id = response.get("agentId")
+            before = len(led.data.get("scopes", []))
+            if not (agent_id and led.attach_agent(str(tool_use_id), str(agent_id))):
+                return hookio.allow()
+            if len(led.data.get("scopes", [])) < before:
+                led.append_event("scope_released", {"agent_id": str(agent_id)})
+            led.save()
+            return hookio.allow()
+        released = led.release_scope(tool_use_id=str(tool_use_id))
+    if released:
+        led.append_event("scope_released",
+                         {"owners": [str(entry.get("owner", "?")) for entry in released]})
+    if released or name == "SubagentStop":
+        led.save()
+    return hookio.allow()
+
+
 def handle(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Validate the spawn's scope fence and record it, or deny."""
+    """Validate the spawn's scope fence and record it, or deny; on PostToolUse
+    and SubagentStop, release the scope of the agent that finished."""
+    if event.get("hook_event_name") in RELEASE_EVENTS:
+        return _released(event)
     root = hookio.event_root(event)
     session = hookio.session_id(event)
     tool_input = event.get("tool_input") or {}
@@ -195,7 +247,8 @@ def handle(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         )
 
     owner = owner_label(tool_input if isinstance(tool_input, dict) else {}, prompt)
-    led.add_scope(owner, scope)
+    tool_use_id = event.get("tool_use_id")
+    led.add_scope(owner, scope, str(tool_use_id) if tool_use_id else None)
     led.append_event(
         "scope_declared",
         {"owner": owner, "write_scope": scope, "stop_when": declaration["stop_when"]},

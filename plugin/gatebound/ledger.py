@@ -23,7 +23,7 @@ import pathlib
 import posixpath
 import re
 import sys
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from . import config, paths
 
@@ -46,6 +46,39 @@ Scope = Union[str, List[str]]
 #: Session ids come from Claude Code, but the ledger filename is built from
 #: them, so anything that is not a safe filename character is replaced.
 _UNSAFE_SESSION_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+
+
+#: How many unmatched SubagentStop agent ids the ledger remembers.
+MAX_STOPPED_AGENTS = 50
+
+
+def _finished(entry: Dict[str, Any], tool_use_id: Optional[str], agent_id: Optional[str]) -> bool:
+    return bool((tool_use_id and entry.get("tool_use_id") == tool_use_id)
+                or (agent_id and entry.get("agent_id") == agent_id))
+
+
+def _apply_scope_op(scopes: List[Dict[str, Any]], op: Tuple[str, Any]) -> None:
+    """Apply one recorded scope change to *scopes* in place."""
+    kind, arg = op
+    if kind == "add":
+        if not (arg.get("tool_use_id") and any(
+                entry.get("tool_use_id") == arg["tool_use_id"] for entry in scopes)):
+            scopes.append(dict(arg))
+    elif kind == "attach":
+        tool_use_id, agent_id = arg
+        for entry in scopes:
+            if entry.get("tool_use_id") == tool_use_id:
+                entry["agent_id"] = agent_id
+    elif kind == "release":
+        scopes[:] = [entry for entry in scopes if not _finished(entry, *arg)]
+
+
+def _merge_ids(first: List[Any], second: List[Any]) -> List[str]:
+    out: List[str] = []
+    for item in list(first) + list(second):
+        if isinstance(item, str) and item not in out:
+            out.append(item)
+    return out
 
 
 def _now() -> str:
@@ -237,6 +270,11 @@ class Ledger:
         self.root = pathlib.Path(root)
         self.session_id = session_id
         self.data = data
+        # Scope changes made through this instance, replayed onto the file's
+        # current scopes at save time (ADR-0040 review): SubagentStop saves
+        # while other hooks hold older copies, and no save may undo another
+        # hook's scope change.
+        self._scope_ops: List[Tuple[str, Any]] = []
 
     # -- construction ----------------------------------------------------
     @classmethod
@@ -266,9 +304,34 @@ class Ledger:
 
     # -- persistence -----------------------------------------------------
     def save(self) -> None:
-        """Write the ledger atomically, refreshing ``updated_at``."""
+        """Write the ledger atomically, refreshing ``updated_at``.
+
+        ``scopes`` is not taken from this copy: the scopes on disk are read
+        again and this instance's own scope changes are replayed onto them, so
+        a hook that loaded the ledger earlier neither brings back a released
+        scope nor drops one declared since (ADR-0040 review).
+        """
+        target = self.path_for(self.root, self.session_id)
+        try:
+            current = json.loads(target.read_text(encoding="utf-8")).get("scopes")
+        except (OSError, ValueError, AttributeError):
+            current = None
+        if isinstance(current, list):
+            scopes = [dict(entry) for entry in current if isinstance(entry, dict)]
+            stopped = list(self.data.get("stopped_agents") or [])
+            try:
+                disk_stopped = json.loads(target.read_text(encoding="utf-8")).get("stopped_agents")
+            except (OSError, ValueError, AttributeError):
+                disk_stopped = None
+            if isinstance(disk_stopped, list):
+                stopped = _merge_ids(disk_stopped, stopped)
+            for op in self._scope_ops:
+                _apply_scope_op(scopes, op)
+            self.data["scopes"] = scopes
+            self.data["stopped_agents"] = stopped[-MAX_STOPPED_AGENTS:]
         self.data["updated_at"] = _now()
-        config.write_json_atomic(self.path_for(self.root, self.session_id), self.data)
+        config.write_json_atomic(target, self.data)
+        self._scope_ops = []
 
     # -- mutation --------------------------------------------------------
     def append_event(self, kind: str, detail: Optional[Dict[str, Any]] = None) -> None:
@@ -278,15 +341,62 @@ class Ledger:
         if len(events) > MAX_EVENTS:
             del events[: len(events) - MAX_EVENTS]
 
-    def add_scope(self, owner: str, write_scope: Scope) -> None:
-        """Record a write scope claimed by *owner* (an agent label or hash)."""
-        self.data.setdefault("scopes", []).append(
-            {
-                "owner": str(owner),
-                "write_scope": write_scope,
-                "declared_at": _now(),
-            }
-        )
+    def add_scope(self, owner: str, write_scope: Scope,
+                  tool_use_id: Optional[str] = None) -> None:
+        """Record a write scope claimed by *owner* (an agent label or hash).
+
+        *tool_use_id* is the spawning tool call's id; it is what lets the
+        scope be released when that agent finishes (:meth:`release_scope`).
+        An entry without one is never released, as before.
+        """
+        entry: Dict[str, Any] = {
+            "owner": str(owner),
+            "write_scope": write_scope,
+            "declared_at": _now(),
+        }
+        if tool_use_id:
+            entry["tool_use_id"] = str(tool_use_id)
+        self.data.setdefault("scopes", []).append(entry)
+        self._scope_ops.append(("add", dict(entry)))
+
+    def attach_agent(self, tool_use_id: str, agent_id: str) -> bool:
+        """Tie a background agent's id to the scope its spawn call declared.
+
+        When that agent already stopped (its SubagentStop came first), the
+        scope is released instead and ``True`` is still returned.
+        """
+        if not tool_use_id or not any(
+                entry.get("tool_use_id") == tool_use_id for entry in self.data.get("scopes", [])):
+            return False
+        if str(agent_id) in (self.data.get("stopped_agents") or []):
+            self.release_scope(tool_use_id=tool_use_id)
+            return True
+        op = ("attach", (str(tool_use_id), str(agent_id)))
+        _apply_scope_op(self.data.setdefault("scopes", []), op)
+        self._scope_ops.append(op)
+        return True
+
+    def release_scope(self, tool_use_id: Optional[str] = None,
+                      agent_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Drop the scopes of a finished agent; return what was dropped.
+
+        A SubagentStop that names no recorded agent is remembered (bounded),
+        so a spawn call whose async PostToolUse arrives later releases at once.
+        """
+        op = ("release", (tool_use_id or None, agent_id or None))
+        scopes = self.data.setdefault("scopes", [])
+        released = [entry for entry in scopes if _finished(entry, *op[1])]
+        _apply_scope_op(scopes, op)
+        self._scope_ops.append(op)
+        if agent_id and not released:
+            stopped = list(self.data.get("stopped_agents") or [])
+            self.data["stopped_agents"] = _merge_ids(stopped, [str(agent_id)])[-MAX_STOPPED_AGENTS:]
+        return released
+
+    def scope_agent_ids(self) -> List[str]:
+        """Agent ids of background agents whose scope is still recorded."""
+        return [str(entry["agent_id"]) for entry in self.data.get("scopes", [])
+                if isinstance(entry, dict) and entry.get("agent_id")]
 
     def scope_conflicts(self, write_scope: Scope) -> List[Dict[str, Any]]:
         """Return recorded scopes that intersect *write_scope*.

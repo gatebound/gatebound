@@ -136,6 +136,67 @@ class NormalisationTests(_Base):
         self.assertEqual(code, 0)
 
 
+class BareHslTripletTests(_Base):
+    """The shipped shadcn-neutral preset stores colours as bare HSL triplets
+    (``--primary: 0 0% 9%``) consumed through ``hsl(var(--primary))``. Found in
+    the 2026-10-09 timed trial: the gate saw no colour tokens at all and read
+    every correct ``hsl(var(...))`` as a literal, so /gatebound:tasks dropped it."""
+
+    SHADCN = {"version": 2, "source": ["seed:shadcn-ui"], "patterns": [],
+              "color": {"primary": "0 0% 9%",
+                        "ring": {"value": "0 0% 3.9%", "evidence": "preset:shadcn-neutral"},
+                        "accent": "240 4.8% 95.9% / 0.5"}}
+
+    def test_bare_triplets_are_colour_tokens(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css", ".a { color: hsl(0 0% 9%); border-color: hsl(0, 0%, 3.9%); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+
+    def test_var_reference_is_not_a_literal(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css",
+                   ".a { color: hsl(var(--primary)); background: hsl(var(--ring) / 0.4); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+        self.assertIn("0 literals", out)
+
+    def test_unknown_hsl_literal_still_fails(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css", ".a { color: hsl(10 50% 50%); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 1, out)
+        self.assertIn("hsl(10 50% 50%)", out)
+
+    def test_triplet_with_alpha_matches_slash_and_comma_forms(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css", ".a { color: hsl(240 4.8% 95.9% / 0.5); "
+                                "background: hsla(240, 4.8%, 95.9%, 0.5); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+
+    def test_space_and_comma_rgb_forms_are_one_colour(self) -> None:
+        self.tokens({"version": 2, "source": [], "patterns": [],
+                     "color": {"shade": "rgba(0, 0, 0, 0.5)"}})
+        self.write("src/a.css", ".a { color: rgb(0 0 0 / 0.5); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+
+    def test_space_syntax_does_not_collide_with_other_colours(self) -> None:
+        self.tokens({"version": 2, "source": [], "patterns": [],
+                     "color": {"a": "hsl(0 0% 9%)"}})
+        self.write("src/a.css", ".a { color: hsl(0 0% 99%); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 1, out)
+
+    def test_shipped_shadcn_preset_has_colour_tokens(self) -> None:
+        preset = pathlib.Path(__file__).resolve().parents[1] / "spec-kit" / "presets" / "design" / "shadcn-neutral.json"
+        self.tokens(json.loads(preset.read_text(encoding="utf-8")))
+        self.write("src/a.css", ".a { color: hsl(var(--primary)); background: hsl(var(--background)); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+
+
 class IgnoreTests(_Base):
     def setUp(self) -> None:
         super().setUp()
@@ -284,3 +345,45 @@ class OutputTests(_Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReviewOfBareHslTests(_Base):
+    """ADR-0040 review: a var() only in the alpha slot is still a hard-coded
+    colour; hue units and alpha spellings compare as one colour; a triplet is
+    a colour only in a colour group."""
+
+    SHADCN = BareHslTripletTests.SHADCN
+
+    def test_var_alpha_does_not_hide_a_hard_coded_colour(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css", ".a { color: rgb(255 0 0 / var(--a)); border-color: rgba(0, 0, 0, var(--b)); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 1, out)
+        self.assertIn("2 violations", out)
+
+    def test_var_in_a_channel_is_a_reference(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css", ".a { color: rgba(var(--rgb), 0.5); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+
+    def test_hue_unit_and_alpha_spelling_do_not_matter(self) -> None:
+        self.tokens(self.SHADCN)
+        self.write("src/a.css", ".a { color: hsl(0deg 0% 9%); background: hsl(240 4.8% 95.9% / 50%); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 0, out)
+
+    def test_triplet_outside_a_colour_group_is_not_a_colour(self) -> None:
+        self.tokens({"version": 2, "source": [], "patterns": [],
+                     "color": {"ink": "#111111"},
+                     "position": {"odd": "10 50% 50%"}})
+        self.write("src/a.css", ".a { color: hsl(10 50% 50%); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 1, out)
+
+    def test_dangling_alpha_slash_is_not_a_triplet(self) -> None:
+        self.tokens({"version": 2, "source": [], "patterns": [],
+                     "color": {"ink": "#111111", "odd": "0 0% 9% /"}})
+        self.write("src/a.css", ".a { color: hsl(0 0% 9%); }")
+        code, out = self.run_gate("src/a.css")
+        self.assertEqual(code, 1, out)

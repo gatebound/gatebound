@@ -12,7 +12,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gatebound import ledger  # noqa: E402
+from gatebound import ledger, paths  # noqa: E402
 from gatebound.gates import spawn as spawn_gate  # noqa: E402
 
 GATE_SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "gatebound" / "gates" / "spawn.py"
@@ -326,3 +326,121 @@ class TestUnmanagedProject(unittest.TestCase):
     def test_managed_project_still_denies(self) -> None:
         (self.root / ".gatebound").mkdir()
         self.assertIsNotNone(spawn_gate.handle(self.event("no fence here")))
+
+
+class TestScopeRelease(SpawnProject):
+    """A finished subagent's scope is released (found in the 2026-10-09 timed
+    trial: round 3 of a build could not be delegated because round 2's
+    finished agents still held overlapping scopes)."""
+
+    SCOPE = {"write_scope": ["src/**"], "stop_when": "tests pass", "tools": "inherit"}
+
+    def pre(self, tool_use_id: str, background: bool = False) -> dict:
+        ev = self.event("Work.\n" + scope_fence(self.SCOPE), description="worker " + tool_use_id)
+        ev["tool_use_id"] = tool_use_id
+        ev["tool_input"]["run_in_background"] = background
+        return ev
+
+    def post(self, tool_use_id: str, response: dict) -> dict:
+        return {
+            "session_id": self.session,
+            "hook_event_name": "PostToolUse",
+            "cwd": str(self.root),
+            "tool_name": "Task",
+            "tool_use_id": tool_use_id,
+            "tool_input": {"prompt": "x"},
+            "tool_response": response,
+        }
+
+    def subagent_stop(self, agent_id: str) -> dict:
+        return {
+            "session_id": self.session,
+            "hook_event_name": "SubagentStop",
+            "cwd": str(self.root),
+            "agent_id": agent_id,
+        }
+
+    def test_foreground_agent_releases_on_completion(self) -> None:
+        self.assertFalse(self.is_deny(spawn_gate.handle(self.pre("t1"))))
+        self.assertTrue(self.is_deny(spawn_gate.handle(self.pre("t2"))))
+        self.assertIsNone(spawn_gate.handle(self.post("t1", {"status": "completed", "agentId": "a1"})))
+        self.assertEqual(self.led().data["scopes"], [])
+        self.assertFalse(self.is_deny(spawn_gate.handle(self.pre("t3"))))
+
+    def test_background_agent_holds_until_subagent_stop(self) -> None:
+        spawn_gate.handle(self.pre("t1", background=True))
+        spawn_gate.handle(self.post("t1", {"status": "async_launched", "isAsync": True, "agentId": "a1"}))
+        self.assertTrue(self.is_deny(spawn_gate.handle(self.pre("t2"))))
+        self.assertEqual(self.led().data["scopes"][0].get("agent_id"), "a1")
+        self.assertIsNone(spawn_gate.handle(self.subagent_stop("a1")))
+        self.assertFalse(self.is_deny(spawn_gate.handle(self.pre("t3"))))
+
+    def test_unknown_ids_change_nothing(self) -> None:
+        spawn_gate.handle(self.pre("t1"))
+        spawn_gate.handle(self.post("other", {"status": "completed"}))
+        spawn_gate.handle(self.subagent_stop("nobody"))
+        self.assertEqual(len(self.led().data["scopes"]), 1)
+
+    def test_entry_without_tool_use_id_is_kept(self) -> None:
+        ev = self.pre("t1")
+        del ev["tool_use_id"]
+        spawn_gate.handle(ev)
+        spawn_gate.handle(self.post("t1", {"status": "completed"}))
+        self.assertEqual(len(self.led().data["scopes"]), 1)
+
+    def test_release_is_recorded_as_an_event(self) -> None:
+        spawn_gate.handle(self.pre("t1"))
+        spawn_gate.handle(self.post("t1", {"status": "completed"}))
+        kinds = [e["kind"] for e in self.led().data["events"]]
+        self.assertIn("scope_released", kinds)
+
+    def test_unmanaged_project_creates_no_state(self) -> None:
+        state = paths.state_dir(self.root)
+        state.rmdir()
+        self.assertIsNone(spawn_gate.handle(self.post("t1", {"status": "completed"})))
+        self.assertIsNone(spawn_gate.handle(self.subagent_stop("a1")))
+        self.assertFalse(state.exists())
+
+    def test_post_and_subagent_stop_run_as_a_script(self) -> None:
+        spawn_gate.handle(self.pre("t1"))
+        for ev in (self.post("t1", {"status": "completed"}), self.subagent_stop("a9")):
+            proc = subprocess.run([sys.executable, str(GATE_SCRIPT)], input=json.dumps(ev),
+                                  capture_output=True, text=True, timeout=30)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.led().data["scopes"], [])
+
+
+class TestHooksRegisterScopeRelease(unittest.TestCase):
+    def test_post_tool_use_and_subagent_stop_reach_the_spawn_gate(self) -> None:
+        hooks = json.loads((pathlib.Path(__file__).resolve().parents[1] / "hooks" / "hooks.json")
+                           .read_text(encoding="utf-8"))["hooks"]
+        post = [e for e in hooks.get("PostToolUse", []) if "Agent" in (e.get("matcher") or "")]
+        self.assertTrue(post and "gates/spawn.py" in post[0]["hooks"][0]["command"])
+        stop = hooks.get("SubagentStop", [])
+        self.assertTrue(stop and "gates/spawn.py" in stop[0]["hooks"][0]["command"])
+
+
+class TestScopeReleaseReview(TestScopeRelease):
+    """ADR-0040 review: a SubagentStop that arrives before its spawn call's
+    async PostToolUse still releases the scope."""
+
+    def test_stop_before_attach_still_releases(self) -> None:
+        spawn_gate.handle(self.pre("t1", background=True))
+        spawn_gate.handle(self.subagent_stop("a1"))
+        spawn_gate.handle(self.post("t1", {"status": "async_launched", "isAsync": True, "agentId": "a1"}))
+        self.assertEqual(self.led().data["scopes"], [])
+
+    def test_failed_or_interrupted_call_releases(self) -> None:
+        spawn_gate.handle(self.pre("t1"))
+        ev = self.post("t1", {})
+        ev["hook_event_name"] = "PostToolUseFailure"
+        ev["error"] = "interrupted"
+        ev["is_interrupt"] = True
+        self.assertIsNone(spawn_gate.handle(ev))
+        self.assertEqual(self.led().data["scopes"], [])
+
+    def test_post_tool_use_failure_reaches_the_spawn_gate(self) -> None:
+        hooks = json.loads((pathlib.Path(__file__).resolve().parents[1] / "hooks" / "hooks.json")
+                           .read_text(encoding="utf-8"))["hooks"]
+        failure = [e for e in hooks.get("PostToolUseFailure", []) if "Agent" in (e.get("matcher") or "")]
+        self.assertTrue(failure and "gates/spawn.py" in failure[0]["hooks"][0]["command"])

@@ -632,3 +632,105 @@ class TestStopAfterAnUnapprovedReDerive(StopProject):
         reason = stop_gate.handle(self.event())["reason"]
         self.assertTrue(any("가" <= ch <= "힣" for ch in reason), reason)
         self.assertIn("/gatebound:gate", reason)
+
+
+class TestDefersWhileABackgroundSubagentRuns(StopProject):
+    """Found in the 2026-10-09 timed trial: /gatebound:verify launched its
+    evaluator in the background and ended the turn; the Stop gate ran the
+    contract at once, the evaluator freed the test port it needed, and the
+    E2E criterion came back unverified. Claude Code lists running background
+    work in the Stop payload; while a subagent is among it, nothing is judged
+    and the stop is allowed. The session wakes when the subagent finishes,
+    and that Stop judges."""
+
+    def event_with(self, *tasks: dict) -> dict:
+        ev = self.event()
+        ev["background_tasks"] = list(tasks)
+        return ev
+
+    RUNNING_AGENT = {"id": "a1", "type": "subagent", "status": "running", "description": "evaluator"}
+
+    def record_agent(self, agent_id: str = "a1") -> None:
+        led = self.led()
+        led.add_scope("evaluator", "read-only", "t1")
+        led.attach_agent("t1", agent_id)
+        led.save()
+
+    def test_running_subagent_defers_judging(self) -> None:
+        self.failing()
+        self.set_pipeline("verify")
+        self.record_agent()
+        self.assertIsNone(stop_gate.handle(self.event_with(self.RUNNING_AGENT)))
+        stop = self.led().data["stop"]
+        self.assertEqual(stop.get("block_count", 0), 0)
+        self.assertEqual(stop["final_verdict"], "unverified")
+        kinds = [e["kind"] for e in self.led().data["events"]]
+        self.assertIn("stop_deferred_for_subagents", kinds)
+
+    def test_judges_again_once_the_subagent_is_gone(self) -> None:
+        self.failing()
+        self.set_pipeline("verify")
+        self.record_agent()
+        stop_gate.handle(self.event_with(self.RUNNING_AGENT))
+        result = stop_gate.handle(self.event_with())
+        self.assertIsNotNone(result)
+        self.assertEqual(result["decision"], "block")
+
+    def test_other_background_work_does_not_defer(self) -> None:
+        self.failing()
+        self.set_pipeline("build")
+        shell = {"id": "b1", "type": "shell", "status": "running", "description": "dev server"}
+        done = dict(self.RUNNING_AGENT, status="completed")
+        result = stop_gate.handle(self.event_with(shell, done))
+        self.assertIsNotNone(result)
+        self.assertEqual(result["decision"], "block")
+
+    def test_malformed_background_tasks_are_ignored(self) -> None:
+        self.failing()
+        self.set_pipeline("build")
+        ev = self.event()
+        ev["background_tasks"] = "nonsense"
+        self.assertIsNotNone(stop_gate.handle(ev))
+
+
+class TestDeferralReview(TestDefersWhileABackgroundSubagentRuns):
+    """ADR-0040 review: only an agent the spawn gate recorded defers, at most
+    MAX_BLOCKS times in a row, and a deferral never rewrites a verdict."""
+
+    def test_unrecorded_subagent_does_not_defer(self) -> None:
+        self.failing()
+        self.set_pipeline("verify")
+        result = stop_gate.handle(self.event_with(dict(self.RUNNING_AGENT, id="stranger")))
+        self.assertIsNotNone(result)
+        self.assertEqual(result["decision"], "block")
+
+    def test_deferral_is_capped(self) -> None:
+        self.failing()
+        self.set_pipeline("verify")
+        self.record_agent()
+        for _ in range(stop_gate.MAX_BLOCKS):
+            self.assertIsNone(stop_gate.handle(self.event_with(self.RUNNING_AGENT)))
+        result = stop_gate.handle(self.event_with(self.RUNNING_AGENT))
+        self.assertIsNotNone(result)
+        self.assertEqual(result["decision"], "block")
+
+    def test_deferral_keeps_an_earlier_verdict(self) -> None:
+        self.failing()
+        self.set_pipeline("verify")
+        stop_gate.handle(self.event())
+        self.assertEqual(self.led().data["stop"]["block_count"], 1)
+        before = dict(self.led().data["stop"])
+        self.record_agent()
+        self.assertIsNone(stop_gate.handle(self.event_with(self.RUNNING_AGENT)))
+        after = self.led().data["stop"]
+        self.assertEqual(after["block_count"], 1)
+        self.assertEqual(after.get("last_reasons"), before.get("last_reasons"))
+
+    def test_deferral_under_stop_hook_active_spends_no_block(self) -> None:
+        self.failing()
+        self.set_pipeline("verify")
+        self.record_agent()
+        ev = self.event_with(self.RUNNING_AGENT)
+        ev["stop_hook_active"] = True
+        self.assertIsNone(stop_gate.handle(ev))
+        self.assertEqual(self.led().data["stop"].get("block_count", 0), 0)

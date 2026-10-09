@@ -54,6 +54,7 @@ gatebound를 쓰다 보면 **막히는 일이 자주 생긴다.** 그게 이 도
 | CLI 실행 시 `ModuleNotFoundError: gatebound` | 모듈 실행 형식을 썼고, 프로젝트 디렉터리에서는 패키지가 `sys.path`에 없음 | 런처 형식 `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" <sub>` 을 쓴다 |
 | spawn이 거부됨 | 프롬프트에 `gatebound-scope` 펜스가 없거나 JSON이 잘못됨 | 펜스를 추가한다. `write_scope`와 `stop_when`은 필수다 |
 | spawn 범위 충돌 | 이미 활성인 에이전트의 범위와 겹침 | 범위를 좁히거나 그 에이전트가 끝날 때까지 기다린다. 메시지에 소유자 이름이 나온다 |
+| Stop 게이트가 `stop_deferred_for_subagents`를 기록하고 판정 없이 턴을 끝냄 | spawn 게이트가 기록한 백그라운드 하위 에이전트(예: verify의 평가자)가 아직 실행 중이다. 그 에이전트가 테스트 포트나 파일을 쓰고 있을 수 있어 판정을 미룬다(연속 최대 3번). 통과로 기록되지 않는다 | 할 일이 없다. 에이전트가 끝나면 세션이 다시 깨어나고 그 턴의 Stop이 계약을 판정한다 (ADR-0040) |
 | 빌드는 통과했는데 완료가 아니라고 함 | 빌드 통과와 계약 통과는 다름 | `/gatebound:verify`가 계약을 판정한다 |
 
 ## 훅 오류 로그 위치
