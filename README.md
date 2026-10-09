@@ -3,7 +3,7 @@
 Status: 0.17.0 — early. License: MIT.
 Project site: [gatebound.dev](https://gatebound.dev).
 Using gatekit 0.16.x? gatebound continues it under its own name (the gatekit
-history stays at [LovelyPaul/gatekit](https://github.com/LovelyPaul/gatekit));
+history stays at [loganmakes/gatekit](https://github.com/loganmakes/gatekit));
 see [Coming from gatekit](docs/manual/en/02-install.md#coming-from-gatekit).
 
 gatebound is a gate-enforced harness for AI-assisted development in

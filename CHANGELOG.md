@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 gatebound is the continuation of gatekit 0.16.15 under its own name: same
 gates, same pipeline, same verdict words (`ok / warn / fail / unverified`).
 The gatekit history, up to 0.16.15, lives at
-[github.com/LovelyPaul/gatekit](https://github.com/LovelyPaul/gatekit). Still
+[github.com/loganmakes/gatekit](https://github.com/loganmakes/gatekit). Still
 early.
 
 ### What changed

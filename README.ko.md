@@ -3,7 +3,7 @@
 상태: 0.17.0 — 초기 단계. 라이선스: MIT.
 프로젝트 사이트: [gatebound.dev](https://gatebound.dev).
 gatekit 0.16.x를 쓰고 있다면: gatebound는 그 이름을 바꿔 이어 가는 프로젝트입니다(gatekit
-기록은 [LovelyPaul/gatekit](https://github.com/LovelyPaul/gatekit)에 남습니다).
+기록은 [loganmakes/gatekit](https://github.com/loganmakes/gatekit)에 남습니다).
 [gatekit에서 옮겨 오기](docs/manual/02-install.md#gatekit에서-옮겨-오기)를 보세요.
 
 gatebound는 [Claude Code](https://claude.com/claude-code)에서 AI 보조 개발을
