@@ -1,0 +1,630 @@
+"""Tests for gates/prompt.py — ledger bootstrap, language detection, context."""
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from gatebound import hookio, ledger  # noqa: E402
+from gatebound.gates import prompt as prompt_gate  # noqa: E402
+
+GATE_SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "gatebound" / "gates" / "prompt.py"
+
+
+class PromptProject(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        (self.root / ".gatebound").mkdir()
+        self.session = "sess-prompt"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def event(self, prompt_text: str, session: str = "") -> dict:
+        return {
+            "session_id": session or self.session,
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": str(self.root),
+            "prompt": prompt_text,
+        }
+
+    def led(self, session: str = "") -> ledger.Ledger:
+        return ledger.Ledger.load(self.root, session or self.session)
+
+    def context_of(self, result) -> str:
+        return result["hookSpecificOutput"]["additionalContext"]
+
+
+class TestLedgerBootstrap(PromptProject):
+    def test_creates_ledger_file(self) -> None:
+        prompt_gate.handle(self.event("hello"))
+        self.assertTrue(ledger.Ledger.exists(self.root, self.session))
+
+    def test_never_blocks(self) -> None:
+        """UserPromptSubmit has no deny path; output is context or nothing."""
+        result = prompt_gate.handle(self.event("hello"))
+        if result is not None:
+            self.assertNotIn("permissionDecision", json.dumps(result))
+            self.assertNotIn("decision", result)
+
+    def test_records_prompt_event(self) -> None:
+        prompt_gate.handle(self.event("hello"))
+        kinds = [e["kind"] for e in self.led().data["events"]]
+        self.assertIn("prompt", kinds)
+
+    def test_separate_sessions_have_separate_ledgers(self) -> None:
+        prompt_gate.handle(self.event("안녕하세요", session="s-ko"))
+        prompt_gate.handle(self.event("hello there", session="s-en"))
+        self.assertEqual(self.led("s-ko").data["output_lang"], "ko")
+        self.assertEqual(self.led("s-en").data["output_lang"], "en")
+
+
+class TestHookRoot(PromptProject):
+    def test_the_prompt_gate_records_where_it_runs_from(self) -> None:
+        # ADR-0032: doctor believes hooks it has seen run from its own root.
+        from gatebound import paths
+        prompt_gate.handle(self.event("hello"))
+        data = self.led().data
+        self.assertEqual(data.get("hook_root"), str(paths.plugin_root()))
+        self.assertTrue(data.get("hook_seen_at"))
+
+
+class TestLanguageDetection(PromptProject):
+    def test_korean_prompt_stores_ko(self) -> None:
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+
+    def test_english_prompt_stores_en(self) -> None:
+        prompt_gate.handle(self.event("build the login screen"))
+        self.assertEqual(self.led().data["output_lang"], "en")
+
+    def test_language_is_refreshed_on_each_prompt(self) -> None:
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+        prompt_gate.handle(self.event("now switch to english please"))
+        self.assertEqual(self.led().data["output_lang"], "en")
+
+    def test_empty_prompt_keeps_previous_language(self) -> None:
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        prompt_gate.handle(self.event(""))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+
+    def test_answering_a_numbered_list_keeps_the_language(self) -> None:
+        """A bare "1" is the same keystroke in either language.
+
+        Under Codex this is the normal way to answer a command's options —
+        there is no `AskUserQuestion`, so they arrive as numbered plain chat.
+        Treating the reply as English evidence flipped a real Korean
+        interview to English and kept it there (observed 2026-09-27).
+        """
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        for reply in ("1", "2.", "3 ", "1 2"):
+            prompt_gate.handle(self.event(reply))
+            self.assertEqual(self.led().data["output_lang"], "ko", reply)
+
+    def test_a_korean_request_naming_a_command_keeps_ko(self) -> None:
+        # Observed on 0.16.8: these flipped a Korean session to English.
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        for reply in ("응 spec validate 돌려줘", "npm install 해줘"):
+            prompt_gate.handle(self.event(reply))
+            self.assertEqual(self.led().data["output_lang"], "ko", reply)
+
+    def test_an_english_sentence_quoting_korean_still_switches(self) -> None:
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        prompt_gate.handle(self.event("Rename the board title to 메모"))
+        self.assertEqual(self.led().data["output_lang"], "en")
+
+    #: What the host delivers as a "prompt" that the user never typed: a
+    #: background task's completion notice and a subagent's hand-back, both
+    #: wrapped in English. Observed on the first host run: each flipped a
+    #: Korean session to output_lang=en.
+    HARNESS_PROMPTS = (
+        "<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is an automated "
+        "background-task event, NOT a message from the user.\n<task-notification>\n"
+        "<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command "
+        "\"Watch the CI run\" completed (exit code 0)</summary>\n</task-notification>\n"
+        "</system-reminder>",
+        "Another Claude session sent a message:\n<agent-message from=\"a1\">\n"
+        "[Subagent hand-back] The text below is the final report.\n  ## 판정 표\n  모두 ok 입니다.\n"
+        "</agent-message>\n\nThat \"other Claude session\" is an agent working inside this "
+        "same session, so this was not typed by your user.",
+    )
+
+    def test_a_harness_message_is_not_the_users_language(self) -> None:
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        for text in self.HARNESS_PROMPTS:
+            prompt_gate.handle(self.event(text))
+            self.assertEqual(self.led().data["output_lang"], "ko", text[:40])
+
+    def test_a_harness_message_does_not_set_the_first_language(self) -> None:
+        prompt_gate.handle(self.event(self.HARNESS_PROMPTS[0]))
+        self.assertNotEqual(self.led().data.get("lang_source"), "prompt")
+
+    def test_a_real_english_sentence_still_switches(self) -> None:
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        prompt_gate.handle(self.event("option 2 please"))
+        self.assertEqual(self.led().data["output_lang"], "en")
+
+    def test_context_reports_the_language(self) -> None:
+        result = prompt_gate.handle(self.event("hello"))
+        self.assertIn("en", self.context_of(result))
+
+
+BARE_BUILD = ("<command-message>gatebound:build</command-message>\n"
+              "<command-name>/gatebound:build</command-name>\n"
+              "<command-args></command-args>")
+KO_PRD = "# 메모 앱\n\n## 문제\n사용자는 메모를 빠르게 남기고 싶다.\n"
+EN_PRD = "# Notes app\n\n## Problem\nUsers want to jot notes down fast.\n"
+
+
+class TestLanguageFromSpec(PromptProject):
+    """ADR-0026: until a prompt carries a signal, the spec decides.
+
+    Rehearsal of 0.16.0: the only prompt was `/gatebound:build`, the ledger kept
+    its blank `en`, and a Korean project got English build reports."""
+
+    def write_prd(self, text: str, name: str = "01-prd.md") -> None:
+        (self.root / "spec").mkdir(exist_ok=True)
+        (self.root / "spec" / name).write_text(text, encoding="utf-8")
+
+    def test_bare_slash_command_in_a_korean_spec_project_is_ko(self) -> None:
+        self.write_prd(KO_PRD)
+        context = self.context_of(prompt_gate.handle(self.event(BARE_BUILD)))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+        self.assertEqual(self.led().data["lang_source"], "spec")
+        self.assertIn("output_lang=ko", context)
+
+    def test_bare_slash_command_in_an_english_spec_project_is_en(self) -> None:
+        self.write_prd(EN_PRD)
+        prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertEqual(self.led().data["output_lang"], "en")
+
+    def test_bare_slash_command_without_a_spec_is_en(self) -> None:
+        prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertEqual(self.led().data["output_lang"], "en")
+        self.assertIsNone(self.led().data["lang_source"])
+
+    def test_discovery_record_when_no_prd(self) -> None:
+        self.write_prd("# 발견\n\n사용자 인터뷰 기록\n", name="00-discovery.md")
+        prompt_gate.handle(self.event("/gatebound:build"))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+
+    def test_korean_prompt_in_an_english_spec_project_is_ko(self) -> None:
+        self.write_prd(EN_PRD)
+        prompt_gate.handle(self.event("로그인 화면을 만들어줘"))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+        self.assertEqual(self.led().data["lang_source"], "prompt")
+
+    def test_a_prompt_signal_is_not_overridden_by_the_spec_later(self) -> None:
+        self.write_prd(KO_PRD)
+        prompt_gate.handle(self.event("build the login screen"))
+        prompt_gate.handle(self.event(BARE_BUILD))
+        prompt_gate.handle(self.event("1"))
+        self.assertEqual(self.led().data["output_lang"], "en")
+
+    def test_a_spec_written_later_in_the_session_is_picked_up(self) -> None:
+        prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertEqual(self.led().data["output_lang"], "en")
+        self.write_prd(KO_PRD)
+        prompt_gate.handle(self.event("2"))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+
+    def old_shape_ledger(self, output_lang: str, events: list) -> None:
+        """A pre-0.16.1 ledger: no `lang_source` key at all."""
+        path = ledger.Ledger.path_for(self.root, self.session)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "version": 1, "session_id": self.session,
+            "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z",
+            "output_lang": output_lang, "active_pipeline": None,
+            "questions": {"asked": 0, "max_calls": 2, "budget_exceeded": False},
+            "scopes": [], "events": events}), encoding="utf-8")
+
+    def test_resumed_old_ledger_keeps_its_prompt_language(self) -> None:
+        # Review of 0.16.1: before `lang_source` existed only a prompt could
+        # set the language, so a resumed old session keeps it.
+        self.write_prd(KO_PRD)
+        self.old_shape_ledger("en", [{"ts": "2026-10-01T00:00:00Z", "kind": "prompt",
+                                      "detail": {"chars": 24}}])
+        prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertEqual(self.led().data["output_lang"], "en")
+        self.assertEqual(self.led().data["lang_source"], "prompt")
+
+    def test_resumed_old_korean_ledger_keeps_ko(self) -> None:
+        self.write_prd(EN_PRD)
+        self.old_shape_ledger("ko", [])
+        prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+
+    def test_old_ledger_with_no_prompt_yet_takes_the_spec(self) -> None:
+        self.write_prd(KO_PRD)
+        self.old_shape_ledger("en", [])
+        prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertEqual(self.led().data["output_lang"], "ko")
+        self.assertEqual(self.led().data["lang_source"], "spec")
+
+    def test_unreadable_spec_keeps_the_hook_working(self) -> None:
+        (self.root / "spec" / "01-prd.md").mkdir(parents=True)
+        result = prompt_gate.handle(self.event(BARE_BUILD))
+        self.assertIn("output_lang=en", self.context_of(result))
+
+
+class TestContextPayload(PromptProject):
+    def test_shape_is_user_prompt_submit(self) -> None:
+        result = prompt_gate.handle(self.event("hello"))
+        block = result["hookSpecificOutput"]
+        self.assertEqual(block["hookEventName"], "UserPromptSubmit")
+        self.assertIn("additionalContext", block)
+
+    def test_context_within_600_chars(self) -> None:
+        led = self.led()
+        led.data["active_pipeline"] = "build"
+        led.data["questions"]["asked"] = 7
+        led.save()
+        result = prompt_gate.handle(self.event("x" * 3000))
+        self.assertLessEqual(len(self.context_of(result)), hookio.MAX_CONTEXT_CHARS)
+
+    def test_context_mentions_pipeline(self) -> None:
+        led = self.led()
+        led.data["active_pipeline"] = "build"
+        led.save()
+        self.assertIn("build", self.context_of(prompt_gate.handle(self.event("go"))))
+
+    def test_context_mentions_question_budget(self) -> None:
+        led = self.led()
+        led.data["questions"]["asked"] = 2
+        led.data["questions"]["max_calls"] = 2
+        led.save()
+        context = self.context_of(prompt_gate.handle(self.event("go")))
+        self.assertIn("2", context)
+
+    def test_context_reports_unresolved_gate_count(self) -> None:
+        (self.root / "spec").mkdir()
+        (self.root / "spec" / "05-gate.md").write_text("# Gate\n", encoding="utf-8")
+        context = self.context_of(prompt_gate.handle(self.event("go")))
+        self.assertTrue(context)
+
+
+class TestSubprocess(PromptProject):
+    def _run(self, event: dict) -> "tuple[int, str, str]":
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        proc = subprocess.run(
+            [sys.executable, str(GATE_SCRIPT)],
+            input=json.dumps(event),
+            capture_output=True,
+            text=True, encoding="utf-8",
+            env=env,
+            timeout=30,
+        )
+        return proc.returncode, proc.stdout, proc.stderr
+
+    def test_allow_with_context_via_subprocess(self) -> None:
+        code, out, err = self._run(self.event("hello"))
+        self.assertEqual(code, 0, err)
+        payload = json.loads(out)
+        self.assertEqual(
+            payload["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit"
+        )
+
+    def test_korean_detected_via_subprocess(self) -> None:
+        code, _, err = self._run(self.event("로그인 화면을 만들어줘"))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.led().data["output_lang"], "ko")
+
+    def test_internal_error_exits_zero_and_logs(self) -> None:
+        runs = self.root / ".gatebound" / "runs"
+        runs.mkdir(parents=True, exist_ok=True)
+        (runs / f"{self.session}.json").mkdir()
+        code, _, err = self._run(self.event("hello"))
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("Traceback", err)
+        self.assertTrue((runs / "hook-errors.log").is_file())
+
+    def test_empty_stdin_exits_zero(self) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        proc = subprocess.run(
+            [sys.executable, str(GATE_SCRIPT)],
+            input="",
+            capture_output=True,
+            text=True, encoding="utf-8",
+            env=env,
+            timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()
+
+
+class TestPipelineDetection(PromptProject):
+    """The prompt gate, not the command prose, records which pipeline is active.
+    Nothing else in production sets ``active_pipeline``; without this the stop
+    gate and the question budget never engage."""
+
+    @staticmethod
+    def tagged(name: str, args: str = "") -> str:
+        """The prompt body Claude Code sends for a plugin slash command, as
+        observed in real session transcripts."""
+        return (
+            "<command-message>gatebound:%s</command-message>\n"
+            "<command-name>/gatebound:%s</command-name>\n"
+            "<command-args>%s</command-args>" % (name, name, args)
+        )
+
+    def test_tagged_slash_command_sets_pipeline(self) -> None:
+        prompt_gate.handle(self.event(self.tagged("build")))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+    def test_tagged_command_with_args(self) -> None:
+        prompt_gate.handle(self.event(self.tagged("interview", "a todo app")))
+        self.assertEqual(self.led().data["active_pipeline"], "interview")
+
+    def test_tagged_doctor_clears(self) -> None:
+        prompt_gate.handle(self.event(self.tagged("build")))
+        prompt_gate.handle(self.event(self.tagged("doctor")))
+        self.assertIsNone(self.led().data["active_pipeline"])
+
+    def test_slash_command_sets_pipeline(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:build"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+    def test_slash_command_with_arguments(self) -> None:
+        prompt_gate.handle(self.event("  /gatebound:interview a todo app in Korean"))
+        self.assertEqual(self.led().data["active_pipeline"], "interview")
+
+    def test_expanded_command_heading_sets_pipeline(self) -> None:
+        body = "---\nname: verify\n---\n\n# /gatebound:verify\n\nInput: ..."
+        prompt_gate.handle(self.event(body))
+        self.assertEqual(self.led().data["active_pipeline"], "verify")
+
+    def test_plain_prompt_keeps_pipeline(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:build"))
+        prompt_gate.handle(self.event("why did task auth-token fail?"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+    def test_mention_mid_sentence_does_not_switch(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:build"))
+        prompt_gate.handle(self.event("later I will run /gatebound:verify, not now"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+    def test_non_pipeline_command_clears(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:build"))
+        prompt_gate.handle(self.event("/gatebound:doctor"))
+        self.assertIsNone(self.led().data["active_pipeline"])
+
+    def test_unknown_gatebound_command_leaves_pipeline(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:build"))
+        prompt_gate.handle(self.event("/gatebound:nonsense"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+    def test_pipeline_change_resets_question_budget(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:interview x"))
+        led = self.led()
+        led.data["questions"]["asked"] = 3
+        led.data["questions"]["budget_exceeded"] = True
+        led.save()
+        prompt_gate.handle(self.event("/gatebound:tasks"))
+        questions = self.led().data["questions"]
+        self.assertEqual(questions["asked"], 0)
+        self.assertFalse(questions["budget_exceeded"])
+
+    def test_same_pipeline_again_does_not_reset(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:interview x"))
+        led = self.led()
+        led.data["questions"]["asked"] = 1
+        led.save()
+        prompt_gate.handle(self.event("/gatebound:interview y"))
+        self.assertEqual(self.led().data["questions"]["asked"], 1)
+
+    def test_context_names_detected_pipeline(self) -> None:
+        result = prompt_gate.handle(self.event("/gatebound:build"))
+        self.assertIn("pipeline=build", self.context_of(result))
+
+    def test_records_pipeline_event(self) -> None:
+        prompt_gate.handle(self.event("/gatebound:gate"))
+        events = [e for e in self.led().data["events"] if e["kind"] == "pipeline_set"]
+        self.assertEqual(events[-1]["detail"]["pipeline"], "gate")
+
+
+class TestDiscoverPipeline(PromptProject):
+    def test_discover_command_sets_pipeline(self) -> None:
+        prompt_gate.handle(self.event(
+            "<command-message>gatebound:discover</command-message>\n"
+            "<command-name>/gatebound:discover</command-name>\n"
+            "<command-args></command-args>"))
+        self.assertEqual(self.led().data["active_pipeline"], "discover")
+
+
+class TestLanguageFromSlashCommand(PromptProject):
+    """A slash command's tag body is not the user's words: language comes from
+    <command-args> only, and an empty args keeps the stored language."""
+
+    def tagged(self, name: str, args: str) -> str:
+        return (
+            "<command-message>gatebound:%s</command-message>\n"
+            "<command-name>/gatebound:%s</command-name>\n"
+            "<command-args>%s</command-args>" % (name, name, args)
+        )
+
+    def test_empty_args_keeps_korean(self) -> None:
+        prompt_gate.handle(self.event("동네 러닝크루 출석 앱을 만들고 싶어요"))
+        prompt_gate.handle(self.event(self.tagged("discover", "")))
+        self.assertEqual(self.led().output_lang, "ko")
+
+    def test_short_korean_args_stay_korean(self) -> None:
+        prompt_gate.handle(self.event(self.tagged("interview", "출석 앱")))
+        self.assertEqual(self.led().output_lang, "ko")
+
+    def test_english_args_detect_english(self) -> None:
+        prompt_gate.handle(self.event("러닝크루"))
+        prompt_gate.handle(self.event(self.tagged("interview", "an attendance app for my running crew")))
+        self.assertEqual(self.led().output_lang, "en")
+
+
+class TestCodexSkillInvocation(PromptProject):
+    def test_dollar_skill_syntax_sets_pipeline(self) -> None:
+        prompt_gate.handle(self.event("$gatebound-build"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+    def test_dollar_skill_with_args(self) -> None:
+        prompt_gate.handle(self.event("$gatebound-interview 출석 앱"))
+        self.assertEqual(self.led().data["active_pipeline"], "interview")
+        self.assertEqual(self.led().output_lang, "ko")
+
+    def test_dollar_mid_sentence_is_not_invocation(self) -> None:
+        prompt_gate.handle(self.event("$gatebound-build"))
+        prompt_gate.handle(self.event("later maybe $gatebound-verify"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+
+class TestHeadingSkillForm(PromptProject):
+    def test_heading_with_dollar_form_sets_pipeline(self) -> None:
+        prompt_gate.handle(self.event("---\nname: build\n---\n\n# $gatebound-build\n"))
+        self.assertEqual(self.led().data["active_pipeline"], "build")
+
+
+class TestQuestionFlagsInContext(unittest.TestCase):
+    """ADR-0012 decision 5: the signals that mean something ride along."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        (self.root / ".gatebound").mkdir()
+        self.led = ledger.Ledger.load(self.root, "sess-flags")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def context_with(self, **fields) -> str:
+        self.led.data["questions"] = dict({"asked": 6, "max_calls": 2}, **fields)
+        return prompt_gate.build_context(self.root, self.led)
+
+    def test_a_clean_session_prints_only_the_count(self) -> None:
+        self.assertIn("questions=6/2 |", self.context_with())
+
+    def test_unjustified_is_reported(self) -> None:
+        self.assertIn("questions=6/2 (2 unjustified)", self.context_with(unjustified=2))
+
+    def test_several_flags_are_joined(self) -> None:
+        text = self.context_with(unjustified=2, repeated=1)
+        self.assertIn("2 unjustified", text)
+        self.assertIn("1 repeat", text)
+
+    def test_implementation_choice_is_named(self) -> None:
+        self.assertIn("impl-choice", self.context_with(implementation_choice=True))
+
+    def test_a_malformed_count_does_not_break_the_line(self) -> None:
+        self.assertIn("questions=6/2", self.context_with(unjustified="lots"))
+
+    def test_the_block_stays_within_the_budget(self) -> None:
+        text = self.context_with(unjustified=9, repeated=9, unrealized=9,
+                                 implementation_choice=True)
+        self.assertLessEqual(len(text), hookio.MAX_CONTEXT_CHARS)
+
+
+class TestBuildStateInContext(unittest.TestCase):
+    """ADR-0013 decision 1a: the session that comes back after a compaction is
+    told a build is live, so it reads PROGRESS.md instead of guessing."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        (self.root / ".gatebound").mkdir()
+        self.led = ledger.Ledger.load(self.root, "sess-build")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def make_job(self, states: dict, finished: bool = False) -> str:
+        from gatebound import jobs
+        job_id = jobs.new_job_id()
+        jdir = jobs.job_dir(self.root, job_id)
+        (jdir / "tasks").mkdir(parents=True)
+        job = {"version": 1, "job_id": job_id, "started_at": jobs._now(),
+               "execution": "host", "tasks": list(states), "backend": {"name": "claude"}}
+        if finished:
+            job["finished_at"] = jobs._now()
+        jobs.write_json(jdir / "job.json", job)
+        for task_id, state in states.items():
+            tdir = jdir / "tasks" / task_id
+            tdir.mkdir(parents=True)
+            jobs.write_json(tdir / "status.json", {"task_id": task_id, "state": state})
+        return job_id
+
+    def test_a_live_build_is_named(self) -> None:
+        self.make_job({"a": "passed", "b": "queued"})
+        text = prompt_gate.build_context(self.root, self.led)
+        self.assertIn("build=", text)
+        self.assertIn("1/2", text)
+
+    def test_the_next_task_is_named(self) -> None:
+        self.make_job({"a": "passed", "b": "queued"})
+        self.assertIn("next: b", prompt_gate.build_context(self.root, self.led))
+
+    def test_a_finished_build_is_not_reported(self) -> None:
+        self.make_job({"a": "passed"}, finished=True)
+        self.assertNotIn("build=", prompt_gate.build_context(self.root, self.led))
+
+    def test_no_job_means_no_field(self) -> None:
+        self.assertNotIn("build=", prompt_gate.build_context(self.root, self.led))
+
+    def test_the_block_stays_within_budget(self) -> None:
+        self.make_job({("task-with-a-long-name-%02d" % i): "queued" for i in range(30)})
+        text = prompt_gate.build_context(self.root, self.led)
+        self.assertLessEqual(len(text), hookio.MAX_CONTEXT_CHARS)
+
+
+class TestUnmanagedProject(unittest.TestCase):
+    """A project with no `.gatebound/` never asked gatebound to govern it.
+
+    The plugin installs globally, so this hook fires everywhere. It must
+    inject no context and leave no state behind in unrelated work.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        (self.root / ".git").mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_no_context_is_injected(self) -> None:
+        event = {"session_id": "u", "cwd": str(self.root),
+                 "hook_event_name": "UserPromptSubmit", "prompt": "안녕 도와줘"}
+        self.assertIsNone(prompt_gate.handle(event))
+
+    def test_no_state_is_created(self) -> None:
+        event = {"session_id": "u", "cwd": str(self.root),
+                 "hook_event_name": "UserPromptSubmit", "prompt": "hello"}
+        prompt_gate.handle(event)
+        self.assertFalse((self.root / ".gatebound").exists())
+
+
+class TestGateStateCoversGrading(PromptProject):
+    """F1: a re-derive after an approved grading file changed reads as a stale
+    approval, the same word a changed 05-gate.md gets."""
+
+    def test_stale_after_unapproved_re_derive(self) -> None:
+        from gatebound import approval, contract
+        (self.root / "spec").mkdir()
+        (self.root / "tests").mkdir()
+        test = self.root / "tests" / "test_x.py"
+        test.write_text("a", encoding="utf-8")
+        (self.root / "spec" / "05-gate.md").write_text(
+            '# Gate\n```gatebound-criterion\n{"id": "c", "argv": ["pytest", "tests/test_x.py"]}\n```\n',
+            encoding="utf-8")
+        contract.derive(self.root)
+        approval.approve(self.root, "spec/05-gate.md")
+        self.assertEqual(prompt_gate._gate_state(self.root), "gate approved")
+        test.write_text("b", encoding="utf-8")
+        contract.derive(self.root)
+        self.assertEqual(prompt_gate._gate_state(self.root), "gate approval STALE (re-approve)")

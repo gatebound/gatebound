@@ -1,0 +1,724 @@
+"""What a command's output says about whether it could judge anything (ADR-0022).
+
+Two questions the gate runners ask of a finished command, kept here so that
+`jobs.run_gates`, the preflight classifier and `contract` answer them the same
+way:
+
+* **Did it run any tests?** A runner that found nothing to run, or skipped
+  every test it found (Amendment A), often exits 0. :func:`ran_no_tests`
+  names the matching signature from
+  ``plugin/spec-kit/no-tests-signatures.json``, the caller reports
+  ``unverified`` instead of ``ok``, and :func:`describe_empty` words it.
+* **Is the path it could not find one a task will write?** :func:`missing_paths`
+  extracts paths named as missing, :func:`relativize` maps them into the
+  project, and :func:`scope_owner` names the task whose ``write_scope`` covers
+  one, using the write gate's own glob matcher.
+
+Pure functions over strings and task dicts; nothing here runs a command.
+"""
+from __future__ import annotations
+
+import fnmatch
+import functools
+import hashlib
+import json
+import locale
+import ntpath
+import os
+import posixpath
+import re
+import shutil
+from typing import Any, Dict, Iterable, List, Optional
+
+from gatebound import paths
+
+SIGNATURES_FILE = "no-tests-signatures.json"
+IS_WINDOWS = os.name == "nt"
+
+
+def _registry_path() -> str:
+    """The machine and user ``Path`` as Windows stores them now, expanded;
+    "" off Windows or when unreadable. A process started before an install
+    keeps its own copy, so this can hold directories ``os.environ`` lacks."""
+    if not IS_WINDOWS:
+        return ""
+    try:
+        import winreg  # Windows-only stdlib module
+    except ImportError:
+        return ""
+    parts = []
+    for hive, key in ((winreg.HKEY_LOCAL_MACHINE,
+                       r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+                      (winreg.HKEY_CURRENT_USER, r"Environment")):
+        try:
+            with winreg.OpenKey(hive, key) as handle:
+                value, _ = winreg.QueryValueEx(handle, "Path")
+            parts.append(winreg.ExpandEnvironmentStrings(str(value)))
+        except OSError:
+            continue
+    return ";".join(p for p in parts if p)
+
+
+def stale_path_hint(program: Any) -> str:
+    """A note for a criterion or gate whose bare *program* could not be run:
+    on Windows, when the registry ``Path`` finds it and this process's does
+    not, it was installed after the session started (observed: Node installed
+    mid-session, every criterion `could not execute: node`). "" otherwise."""
+    name = str(program or "")
+    if not IS_WINDOWS or not name or "/" in name or "\\" in name:
+        return ""
+    registry = _registry_path()
+    if not registry:
+        return ""
+    found = shutil.which(name, path=registry)
+    if not found or shutil.which(name):
+        return ""
+    return (" — %s is installed (%s) but not on this session's PATH; start Claude Code "
+            "again from a new terminal so it sees the new PATH" % (name, found))
+
+
+def decode_output(raw: Optional[bytes]) -> str:
+    """A command's captured output as text, never lost.
+
+    UTF-8 first (Node and Playwright print `✔`/`—` in UTF-8 whatever the
+    console says), then the locale codec (a child Python or a Windows tool
+    printing a cp949 path), then UTF-8 with replacement. Decoding with one
+    codec alone either broke the reader thread under cp949 and returned an
+    empty stream, so a `stdout_not_contains` check passed against nothing, or
+    mangled the path the not-yet-runnable classifier matches on.
+    """
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode(locale.getpreferredencoding(False))
+    except (UnicodeDecodeError, LookupError):
+        return raw.decode("utf-8", "replace")
+
+
+def child_env() -> Dict[str, str]:
+    """The environment a criterion or task gate runs in: this process's, with
+    ``PYTHONIOENCODING=utf-8`` unless the user set it.
+
+    A child Python prints in its locale codec; a path or test name that codec
+    cannot encode (Korean on a cp1252 Windows) killed it mid-print and left
+    nothing to judge. Only the standard streams change — ``open()`` in the
+    user's code keeps its default — and :func:`decode_output` reads UTF-8 first.
+    """
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+
+def decode_output(raw: Optional[bytes]) -> str:
+    """A command's captured output as text, never lost.
+
+    UTF-8 first (Node and Playwright print `✔`/`—` in UTF-8 whatever the
+    console says), then the locale codec (a child Python or a Windows tool
+    printing a cp949 path), then UTF-8 with replacement. Decoding with one
+    codec alone either broke the reader thread under cp949 and returned an
+    empty stream, so a `stdout_not_contains` check passed against nothing, or
+    mangled the path the not-yet-runnable classifier matches on.
+    """
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode(locale.getpreferredencoding(False))
+    except (UnicodeDecodeError, LookupError):
+        return raw.decode("utf-8", "replace")
+
+
+def child_env() -> Dict[str, str]:
+    """The environment a criterion or task gate runs in: this process's, with
+    ``PYTHONIOENCODING=utf-8`` unless the user set it.
+
+    A child Python prints in its locale codec; a path or test name that codec
+    cannot encode (Korean on a cp1252 Windows) killed it mid-print and left
+    nothing to judge. Only the standard streams change — ``open()`` in the
+    user's code keeps its default — and :func:`decode_output` reads UTF-8 first.
+    """
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+#: A signature's ``kind`` (ADR-0022 Amendment A) and the detail it reads as.
+#: An absent kind is ``no_tests``; any other value makes the entry malformed.
+KIND_WORDING = {
+    "no_tests": "ran no tests",
+    "all_skipped": "all tests skipped",
+    # ADR-0031: the runner could not start what it needs (a webServer on a
+    # port already in use). The code was not judged; a record holding one is
+    # not reused by the Stop gate.
+    "environment": "could not start the runner",
+}
+ENVIRONMENT_KIND = "environment"
+DEFAULT_KIND = "no_tests"
+
+
+def _signatures_path():
+    return paths.plugin_root() / "spec-kit" / SIGNATURES_FILE
+
+
+def _compile_signature(sig: Any) -> Optional[tuple]:
+    """One entry as ``(id, pattern, positive, exits, kind, requires)``, or
+    None when malformed.
+
+    Exits must be a list of integers (``true`` is not an exit code); a missing
+    list means ``[0]``. ``kind`` must be a key of :data:`KIND_WORDING`; a
+    missing one means ``no_tests``. ``requires``, when present, is a
+    non-empty pattern that must also match somewhere in the output (the
+    runner's own context, e.g. its header); missing means None.
+    """
+    if not isinstance(sig, dict):
+        return None
+    sig_id, pattern, positive = sig.get("id"), sig.get("pattern"), sig.get("positive")
+    if not (isinstance(sig_id, str) and sig_id and isinstance(pattern, str) and pattern
+            and isinstance(positive, str) and positive):
+        return None
+    exits = sig.get("exits", [0])
+    if exits is None:
+        exits = [0]
+    if not isinstance(exits, list) or not exits or not all(
+            isinstance(e, int) and not isinstance(e, bool) for e in exits):
+        return None
+    kind = sig.get("kind", DEFAULT_KIND)
+    if not isinstance(kind, str) or kind not in KIND_WORDING:
+        return None
+    requires = sig.get("requires")
+    if requires is not None and not (isinstance(requires, str) and requires):
+        return None
+    try:
+        return (sig_id, re.compile(pattern, re.MULTILINE),
+                re.compile(positive, re.MULTILINE), tuple(exits), kind,
+                re.compile(requires, re.MULTILINE) if requires is not None else None)
+    except (re.error, TypeError, ValueError, OverflowError):
+        return None
+
+
+@functools.lru_cache(maxsize=1)
+def _signatures() -> tuple:
+    """Compiled signatures. An unreadable or structurally malformed file means
+    none; a malformed entry is skipped and the rest still apply."""
+    try:
+        data = json.loads(_signatures_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ()
+    entries = data.get("signatures") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return ()
+    return tuple(c for c in (_compile_signature(e) for e in entries) if c is not None)
+
+
+def signatures_digest() -> Optional[str]:
+    """SHA-256 of the signature file's bytes, or None when it cannot be read.
+
+    Recorded with the Stop gate's last result so a result judged under other
+    signatures (e.g. before 0.14.0) is never reused.
+    """
+    try:
+        return hashlib.sha256(_signatures_path().read_bytes()).hexdigest()
+    except (OSError, ValueError):
+        return None
+
+
+#: Terminal colour and cursor escapes; runners add them under a TTY or when
+#: forced (FORCE_COLOR, --color=yes), and they split the anchored patterns.
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def strip_ansi(text: Any) -> str:
+    return _ANSI.sub("", str(text or ""))
+
+
+def ran_no_tests(stdout: Any, stderr: Any, exit_code: Any) -> Optional[str]:
+    """The id of the "ran no tests" signature this output matches, or None.
+
+    A match needs one signature's pattern (and its ``requires`` pattern, when
+    it has one) with *exit_code* in its exits, and
+    no signature's positive-count pattern anywhere in the output — so a run
+    in which any test ran is never called empty. Signatures are tried in file
+    order; an "all skipped" one (Amendment A) is matched the same way. ANSI
+    escapes are stripped first.
+    """
+    sigs = _signatures()
+    if not sigs or not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        return None
+    text = strip_ansi("%s\n%s" % (stdout or "", stderr or ""))
+    if any(sig[2].search(text) for sig in sigs):
+        return None
+    for sig_id, pattern, _, exits, _, requires in sigs:
+        if exit_code in exits and pattern.search(text) and (
+                requires is None or requires.search(text)):
+            return sig_id
+    return None
+
+
+def describe_empty(sig_id: Any, exit_code: Any) -> str:
+    """The detail for a result :func:`ran_no_tests` named:
+    ``ran no tests (<id>; exit N)``, or ``all tests skipped (<id>; exit N)``
+    for a signature of kind ``all_skipped``. An id no longer in the file
+    reads as ``ran no tests``."""
+    return "%s (%s; exit %s)" % (KIND_WORDING[signature_kind(sig_id)], sig_id, exit_code)
+
+
+def signature_kind(sig_id: Any) -> str:
+    """The ``kind`` of signature *sig_id*; ``no_tests`` for an unknown id."""
+    return next((sig[4] for sig in _signatures() if sig[0] == sig_id), DEFAULT_KIND)
+
+
+#: Lines that name a path the command could not find. Each has one group, the
+#: path. `No module named` names a module, not a path, and is not here. The
+#: shell form (`<prog>: <path>: No such file or directory`) needs the path to
+#: open the line or follow a `<prog>: ` prefix and to hold no space: a path
+#: with spaces is ambiguous in that form, and no extraction beats a wrong one.
+_MISSING_PATH_PATTERNS = (
+    re.compile(r"ENOENT: no such file or directory, (?:open|stat|lstat|scandir|access|"
+               r"realpath|readlink|opendir|chdir|uv_cwd) '([^']+)'", re.IGNORECASE),
+    re.compile(r"can't open file '([^']+)'"),
+    re.compile(r"No such file or directory: '([^']+)'"),
+    re.compile(r"(?:^|:[ \t])([^\s:'\"\[\]]+): No such file or directory", re.MULTILINE),
+    re.compile(r"ERROR: file or directory not found: (\S+)"),
+)
+#: node's message for a missing entry script or relative require. It also names
+#: missing packages, so a capture counts only when it looks like a path.
+_CANNOT_FIND_MODULE = re.compile(r"Cannot find module '([^']+)'")
+#: npm's own message when the project has no manifest: the runner cannot start.
+_MISSING_MANIFEST = re.compile(r"Could not read package\.json")
+_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _looks_like_path(raw: str, argv: Optional[Iterable[Any]]) -> bool:
+    """A `Cannot find module` capture is a path when it is absolute, explicitly
+    relative, or holds a slash and is not a scoped package (``@scope/pkg``) —
+    or when it is one of the command's own arguments. ``express`` is not."""
+    if argv and raw in {str(a) for a in argv}:
+        return True
+    if raw.startswith(("/", "./", "../", ".\\", "..\\")) or _DRIVE.match(raw):
+        return True
+    return ("/" in raw or "\\" in raw) and not raw.startswith("@")
+
+
+def missing_paths(text: Any, argv: Optional[Iterable[Any]] = None) -> List[str]:
+    """Paths *text* names as missing, in order of appearance, each once.
+
+    *argv*, when given, lets a bare ``Cannot find module 'x'`` count as a path
+    because the command itself named ``x``.
+    """
+    text = str(text or "")
+    argv = list(argv) if argv else None
+    hits = []
+    for pattern in _MISSING_PATH_PATTERNS:
+        for match in pattern.finditer(text):
+            # Python prints paths through repr(), doubling each backslash.
+            raw = match.group(1).replace("\\\\", "\\").strip()
+            if raw:
+                hits.append((match.start(1), raw))
+    for match in _CANNOT_FIND_MODULE.finditer(text):
+        raw = match.group(1).strip()
+        if raw and _looks_like_path(raw, argv):
+            hits.append((match.start(1), raw))
+    ordered: List[str] = []
+    for _, raw in sorted(hits):
+        if raw not in ordered:
+            ordered.append(raw)
+    return ordered
+
+
+def is_missing_manifest(text: Any) -> bool:
+    """True when npm says it cannot read the project's package.json."""
+    return bool(_MISSING_MANIFEST.search(str(text or "")))
+
+
+def _norm(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def _windows_shaped(path: str) -> bool:
+    return bool(_DRIVE.match(path)) or "\\" in path
+
+
+def _normalize(path: str) -> str:
+    """Collapse ``.`` and ``..`` segments, with the rules of the platform the
+    path looks like, and return it with forward slashes."""
+    if _windows_shaped(path):
+        return _norm(ntpath.normpath(path))
+    return posixpath.normpath(path)
+
+
+def _real_forms(path: str) -> List[str]:
+    """*path*, plus its resolved form when it or its parent exists here, so a
+    symlinked prefix (``/var`` vs ``/private/var``) still matches the root."""
+    forms = [path]
+    if _windows_shaped(path) and os.name != "nt":
+        return forms
+    try:
+        if os.path.exists(path):
+            forms.append(_norm(os.path.realpath(path)))
+        else:
+            parent, name = os.path.split(path)
+            if parent and os.path.isdir(parent):
+                forms.append(_norm(os.path.join(os.path.realpath(parent), name)))
+    except (OSError, ValueError):
+        pass
+    return forms
+
+
+def relativize(raw: str, root: Any) -> Optional[str]:
+    """*raw* as a POSIX path relative to *root*, or None outside it.
+
+    Textual first, so a Windows message is understood on any host:
+    backslashes become slashes, ``..`` collapses, and a drive letter compares
+    case-insensitively. Then the resolved forms of both are compared where
+    they exist on this host. A relative *raw* is already relative to the
+    root, which is every gate's cwd.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    path = _normalize(text)
+    if path.startswith("/") or _DRIVE.match(path):
+        root_text = str(root)
+        roots = {_normalize(root_text).rstrip("/")}
+        try:
+            roots.add(_norm(os.path.realpath(root_text)).rstrip("/"))
+        except (OSError, ValueError):
+            pass
+        rest = None
+        for form in _real_forms(path):
+            for base in sorted(roots, key=len, reverse=True):
+                if not base:
+                    continue
+                if _DRIVE.match(base):
+                    if form.lower().startswith(base.lower() + "/"):
+                        rest = form[len(base) + 1:]
+                elif form.startswith(base + "/"):
+                    rest = form[len(base) + 1:]
+                if rest is not None:
+                    break
+            if rest is not None:
+                break
+        if rest is None:
+            return None
+        path = rest
+    parts = [p for p in path.split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        return None
+    return "/".join(parts)
+
+
+#: Programs that run a file named in their arguments. When one of these exits
+#: 126/127 because that file is missing, the file — not the program — is what
+#: could not be found (ADR-0022).
+INTERPRETERS = frozenset(("sh", "bash", "zsh", "node", "python", "python3", "ruby", "deno",
+                          "bun", "tsx", "ts-node"))
+_VERSION_SUFFIX = re.compile(r"(?<=[a-z])[\d.]+$")
+
+
+def is_interpreter(program: Any) -> bool:
+    """True when *program* (a path or a bare name) is one of `INTERPRETERS`;
+    ``python3.12`` and ``python.exe`` count as ``python``."""
+    name = ntpath.basename(_norm(str(program or "")).rsplit("/", 1)[-1]).lower()
+    if name.endswith(".exe"):
+        name = name[:-4]
+    if not name:
+        return False
+    return name in INTERPRETERS or _VERSION_SUFFIX.sub("", name) in INTERPRETERS
+
+
+def _scope_globs(task: Dict[str, Any]) -> List[str]:
+    scope = task.get("write_scope") if isinstance(task, dict) else None
+    if isinstance(scope, str):
+        return [] if scope == "read-only" else [scope]
+    if isinstance(scope, list):
+        return [g for g in scope if isinstance(g, str) and g.strip()]
+    return []
+
+
+def scope_owner(relpath: str, tasks: Optional[Iterable[Dict[str, Any]]]) -> Optional[str]:
+    """The id of the first task whose write_scope covers *relpath*.
+
+    Uses the write gate's matcher, so "covered" means exactly what the write
+    gate would let that task write.
+    """
+    from gatebound.gates import write  # lazy: the hook module pulls in more
+
+    for task in tasks or []:
+        for glob in _scope_globs(task):
+            if write.matches(relpath, glob):
+                return str(task.get("id"))
+    return None
+
+
+def _argv_paths(argv: Optional[Iterable[Any]], root: Any) -> set:
+    """Each argument as relativized into the project (options skipped)."""
+    found = set()
+    for arg in argv or []:
+        tok = str(arg).strip()
+        if not tok or tok.startswith("-"):
+            continue
+        rel = relativize(tok, root)
+        if rel is not None:
+            found.add(rel)
+    return found
+
+
+def missing_path_owner(gate: Dict[str, Any], root: Any,
+                       tasks: Optional[Iterable[Dict[str, Any]]],
+                       argv: Optional[Iterable[Any]] = None) -> Optional[Dict[str, Any]]:
+    """``{"path", "owner", "manifest", "argv_named"}`` for a failing gate's
+    missing path.
+
+    The first extracted path that a task covers wins; otherwise the path is
+    reported with ``owner`` None — ``package.json`` when npm says it cannot
+    read the manifest, else the first extracted path (relative when inside the
+    root, as printed when not). ``argv_named`` says the reported path is one
+    of the gate's own arguments. None when the output names no missing path.
+    """
+    text = "%s\n%s" % (gate.get("stdout_tail") or "", gate.get("stderr_tail") or "")
+    argv = list(argv) if isinstance(argv, list) else None
+    raws = missing_paths(text, argv=argv)
+    if not raws:
+        return None
+    manifest = is_missing_manifest(text)
+    named = _argv_paths(argv, root)
+    tasks = list(tasks or [])
+    first = None
+    for raw in raws:
+        rel = relativize(raw, root)
+        shown = rel if rel is not None else raw
+        if first is None:
+            first = shown
+        owner = scope_owner(rel, tasks) if rel is not None else None
+        if owner:
+            return {"path": rel, "owner": owner, "manifest": manifest,
+                    "argv_named": rel in named}
+    if manifest:
+        first = "package.json"
+    return {"path": first, "owner": None, "manifest": manifest,
+            "argv_named": first in named}
+
+
+def program_owner(program: Any, root: Any,
+                  tasks: Optional[Iterable[Dict[str, Any]]]) -> "tuple":
+    """``(relpath, owner)`` for a program that could not be executed at all.
+
+    Only a program given as a path (holding a slash) can be one a task
+    writes; a bare name is looked up on PATH and gives ``(None, None)``.
+    """
+    text = str(program or "")
+    if "/" not in text and "\\" not in text:
+        return None, None
+    rel = relativize(text, root)
+    return rel, (scope_owner(rel, tasks) if rel else None)
+
+
+#: Directories a package manager fills from a manifest, and the manifests
+#: that can fill each. A program under one is missing until dependencies are
+#: installed, which is not a broken command. Each name is also skipped by
+#: `contract.tree_fingerprint` (FINGERPRINT_SKIP_DIRS).
+DEPENDENCY_MANIFESTS = {
+    "node_modules": ("package.json",),
+    ".venv": ("pyproject.toml", "requirements.txt", "requirements-dev.txt", "setup.py",
+              "setup.cfg", "Pipfile", "poetry.lock", "uv.lock"),
+    "venv": ("pyproject.toml", "requirements.txt", "requirements-dev.txt", "setup.py",
+             "setup.cfg", "Pipfile", "poetry.lock", "uv.lock"),
+}
+
+
+def dependency_program(program: Any, root: Any,
+                       tasks: Optional[Iterable[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+    """For a program path inside a dependency directory (``node_modules``,
+    ``.venv``, ``venv``): ``{"path", "dir", "manifest", "owner"}``.
+
+    ``manifest`` sits beside the directory (``web/node_modules/.bin/x`` →
+    ``web/package.json``); ``owner`` is the first task whose write_scope
+    covers one of that directory's manifests, and ``manifest`` is then that
+    one, else the first candidate. None for a bare name or any other path.
+    """
+    text = str(program or "")
+    if "/" not in text and "\\" not in text:
+        return None
+    rel = relativize(text, root)
+    if rel is None:
+        return None
+    parts = rel.split("/")
+    for index, part in enumerate(parts[:-1]):
+        names = DEPENDENCY_MANIFESTS.get(part)
+        if not names:
+            continue
+        base = "/".join(parts[:index])
+        candidates = ["%s/%s" % (base, n) if base else n for n in names]
+        tasks = list(tasks or [])
+        for candidate in candidates:
+            owner = scope_owner(candidate, tasks)
+            if owner:
+                return {"path": rel, "dir": part, "manifest": candidate, "owner": owner}
+        return {"path": rel, "dir": part, "manifest": candidates[0], "owner": None}
+    return None
+
+
+def _inside(path: str, base: str) -> bool:
+    return path == base or path.startswith(base.rstrip(os.sep) + os.sep)
+
+
+GRADING_PATTERNS_FILE = "grading-patterns.json"
+
+
+@functools.lru_cache(maxsize=1)
+def grading_patterns() -> Dict[str, tuple]:
+    """``{"dirs", "basenames", "exclude_dirs"}`` from
+    ``plugin/spec-kit/grading-patterns.json``, each a tuple of lower-case
+    strings. An unreadable or malformed file, or list, means none: only
+    argv[0] scripts then count. Never raises."""
+    try:
+        data = json.loads((paths.plugin_root() / "spec-kit" / GRADING_PATTERNS_FILE)
+                          .read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        data = {}
+    out: Dict[str, tuple] = {}
+    for key in ("dirs", "basenames", "exclude_dirs"):
+        raw = data.get(key) if isinstance(data, dict) else None
+        out[key] = tuple(str(v).lower() for v in raw if isinstance(v, str) and v) \
+            if isinstance(raw, list) else ()
+    return out
+
+
+def _test_shaped(rel: str, patterns: Dict[str, tuple]) -> bool:
+    """True when *rel* looks like a test file.
+
+    Under gatebound's own top-level ``spec/`` only a test-shaped basename counts
+    (``spec/models/user_spec.rb`` does, ``spec/tokens.json`` and
+    ``spec/02-design.md`` do not): that folder holds the specification, which
+    a design or token update legitimately changes after approval (ADR-0023
+    review F3). A nested ``spec/`` is still a test directory.
+    """
+    parts = rel.lower().split("/")
+    by_name = any(fnmatch.fnmatchcase(parts[-1], glob) for glob in patterns["basenames"])
+    if len(parts) > 1 and parts[0] == paths.SPEC_DIRNAME.lower():
+        return by_name
+    if any(part in patterns["dirs"] for part in parts[:-1]):
+        return True
+    return by_name
+
+
+#: ``file:12`` / ``file:12:5`` (vitest, jest) and pytest's ``[param]`` suffix.
+_LOCATION_SUFFIX = re.compile(r"(?::\d+)+$")
+_PARAM_SUFFIX = re.compile(r"\[[^\[\]]*\]$")
+
+
+def _grading_token(index: int, arg: Any, token: str, plugin: str) -> Optional[str]:
+    """The path part of one argv token, or None when it cannot name one."""
+    if not isinstance(arg, str):
+        return None
+    text = arg.replace(token, plugin).strip()
+    if text.startswith("-"):
+        # `--spec=e2e/login.spec.ts`: the value can be a path; a bare option not.
+        if index == 0 or "=" not in text:
+            return None
+        text = text.split("=", 1)[1].strip()
+    if not text or "\x00" in text:
+        return None
+    if index == 0 and "/" not in text and "\\" not in text:
+        return None
+    if "::" in text:
+        text = text.split("::", 1)[0]
+    text = _PARAM_SUFFIX.sub("", text)
+    text = _LOCATION_SUFFIX.sub("", text)
+    return text or None
+
+
+def grading_files(argv: Any, root: Any) -> List[str]:
+    """ADR-0023: project-relative paths of the files *argv* names that do the
+    judging, in argv order, each once.
+
+    A token (after ``${CLAUDE_PLUGIN_ROOT}`` expansion) counts when it names
+    an existing regular file inside *root* and either is argv[0] given as a
+    path (a script) or is test-shaped per :func:`grading_patterns`. Nothing
+    under an excluded (build output, dependency) directory counts. Options
+    are skipped except the value of ``--opt=path``; a pytest node id counts by
+    its part before ``::``, and ``[param]`` and ``:line`` suffixes are
+    dropped. A file whose realpath leaves the root does not count. Never
+    raises.
+    """
+    if not isinstance(argv, list) or not argv:
+        return []
+    try:
+        token = paths.PLUGIN_ROOT_TOKEN
+        plugin = str(paths.plugin_root())
+        real_root = os.path.realpath(str(root))
+        patterns = grading_patterns()
+    except (OSError, ValueError, AttributeError):
+        return []
+    found: List[str] = []
+    for index, arg in enumerate(argv):
+        text = _grading_token(index, arg, token, plugin)
+        if text is None:
+            continue
+        try:
+            rel = relativize(text, root)
+            if rel is None or rel in found:
+                continue
+            if any(part.lower() in patterns["exclude_dirs"] for part in rel.split("/")[:-1]):
+                continue
+            if index != 0 and not _test_shaped(rel, patterns):
+                continue
+            full = os.path.join(str(root), *rel.split("/"))
+            if not os.path.isfile(full) or not _inside(os.path.realpath(full), real_root):
+                continue
+        except (OSError, ValueError):
+            continue
+        found.append(rel)
+    return found
+
+
+#: Grading files are read in pieces this size, so a large one is never held
+#: in memory whole.
+_HASH_CHUNK = 1024 * 1024
+
+
+def _sha256(path: str) -> Optional[str]:
+    """Hex SHA-256 of the file at *path*, or None when it cannot be read."""
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(_HASH_CHUNK), b""):
+                digest.update(chunk)
+    except (OSError, ValueError):
+        return None
+    return digest.hexdigest()
+
+
+def grading_hashes(argv: Any, root: Any) -> Dict[str, str]:
+    """``{relpath: sha256}`` of :func:`grading_files`; an unreadable file is
+    left out. Never raises."""
+    hashes: Dict[str, str] = {}
+    for rel in grading_files(argv, root):
+        digest = _sha256(os.path.join(str(root), *rel.split("/")))
+        if digest is not None:
+            hashes[rel] = digest
+    return hashes
+
+
+def changed_grading(recorded: Any, root: Any) -> List[str]:
+    """Paths in *recorded* (``{relpath: sha256}``) whose file now hashes
+    differently or is gone, sorted. Never raises."""
+    if not isinstance(recorded, dict):
+        return []
+    changed = []
+    for rel, digest in recorded.items():
+        if not isinstance(rel, str):
+            continue
+        try:
+            now = _sha256(os.path.join(str(root), *rel.split("/")))
+        except (TypeError, ValueError):
+            now = None
+        if now != digest:
+            changed.append(rel)
+    return sorted(changed)

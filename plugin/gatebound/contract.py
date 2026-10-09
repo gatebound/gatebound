@@ -1,0 +1,1295 @@
+"""The executable completion contract.
+
+"Done" is not a claim an agent gets to make in prose. It is a list of commands
+that either exit as expected or do not. Criteria are declared in
+``spec/05-gate.md`` as ```` ```gatebound-criterion ```` JSON fences, frozen into
+``.gatebound/contract.json`` by :func:`derive`, and executed by :func:`execute`.
+
+Three rules keep the result honest:
+
+* **Timeouts are ``unverified``, never ``ok`` and never ``fail``.** A command
+  that ran out of time told us nothing about the code.
+* **Artifacts must stay inside the project root**, checked after
+  ``os.path.realpath`` so a symlink cannot point the evidence somewhere else.
+* **A stale contract short-circuits to ``unverified``.** If ``05-gate.md`` or
+  any recorded design input (:data:`INPUT_FILES`) changed after derivation, the
+  frozen criteria no longer describe the agreed-upon gate, so running them would
+  answer the wrong question.
+
+Commands run through ``subprocess.run`` with no shell: ``argv`` is a list and
+stays a list, so a criterion cannot smuggle in shell metacharacters.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
+from typing import Any, Dict, List, Optional, Sequence
+
+from . import approval, config, names, paths, runcheck, verdict
+
+VERSION = 1
+
+#: Total wall-clock budget for a whole contract run (ARCHITECTURE.md section 5).
+#: A project whose suite is honestly slower may raise it with a
+#: ``gatebound-budget`` fence in spec/05-gate.md, up to MAX_BUDGET_S. Without
+#: that escape hatch a slow-but-passing suite is permanently `unverified`.
+TOTAL_BUDGET_S = 45.0
+
+#: Ceiling for a declared budget. A Stop-gate run that can outlast the user's
+#: patience is worse than one that reports `unverified` and stands down.
+MAX_BUDGET_S = 600.0
+
+#: Per-criterion default when the fence omits ``timeout_s``.
+DEFAULT_TIMEOUT_S = 30
+
+#: How much of stdout/stderr is retained per criterion.
+TAIL_CHARS = 2000
+
+#: Everything ``expect`` may say. ``exit`` is an integer; the ``*_contains``
+#: and ``*_not_contains`` keys take a string or a list of strings (all must
+#: hold); the ``*_regex`` keys take one pattern searched with re.MULTILINE.
+#: Output expectations are judged over the whole stream, not the stored tail.
+#: An unknown key is a derive error, so a typo cannot become a silent pass.
+EXPECT_KEYS = (
+    "exit",
+    "stdout_contains",
+    "stdout_not_contains",
+    "stdout_regex",
+    "stderr_contains",
+    "stderr_not_contains",
+    "stderr_regex",
+)
+
+
+def _as_str_list(value: Any) -> Optional[List[str]]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list) and all(isinstance(v, str) for v in value):
+        return list(value)
+    return None
+
+
+def validate_expect(expect: Any, ident: str = "?") -> List[str]:
+    """Problems with an ``expect`` object, as messages; empty when valid.
+
+    Shared by ``derive`` (which refuses) and ``spec validate`` (which reports)
+    so the two can never disagree about what a criterion may say.
+    """
+    if not isinstance(expect, dict):
+        return ["criterion '%s': 'expect' must be an object" % ident]
+    problems: List[str] = []
+    for key, value in expect.items():
+        if key not in EXPECT_KEYS:
+            problems.append(
+                "criterion '%s': unknown expect key '%s' (allowed: %s)" % (ident, key, ", ".join(EXPECT_KEYS))
+            )
+        elif key == "exit":
+            if isinstance(value, bool) or not isinstance(value, int):
+                problems.append("criterion '%s': expect.exit must be an integer" % ident)
+        elif key.endswith("_regex"):
+            if not isinstance(value, str):
+                problems.append("criterion '%s': expect.%s must be a string" % (ident, key))
+            else:
+                try:
+                    re.compile(value)
+                except re.error as err:
+                    problems.append("criterion '%s': expect.%s is not a valid regex: %s" % (ident, key, err))
+        elif _as_str_list(value) is None:
+            problems.append("criterion '%s': expect.%s must be a string or a list of strings" % (ident, key))
+    return problems
+
+
+def judge_output(expect: Dict[str, Any], stdout: str, stderr: str) -> List[str]:
+    """Expectations over the streams that did not hold; empty means all held."""
+    streams = {"stdout": stdout or "", "stderr": stderr or ""}
+    failures: List[str] = []
+    for key, value in expect.items():
+        if key == "exit" or key not in EXPECT_KEYS:
+            continue
+        stream_name, _, kind = key.partition("_")
+        text = streams[stream_name]
+        if kind == "regex":
+            if not re.search(value, text, re.MULTILINE):
+                failures.append("expect.%s did not match: %r" % (key, value))
+        elif kind == "contains":
+            for needle in _as_str_list(value) or []:
+                if needle not in text:
+                    failures.append("expect.%s missing: %r" % (key, needle))
+        elif kind == "not_contains":
+            for needle in _as_str_list(value) or []:
+                if needle in text:
+                    failures.append("expect.%s matched: %r" % (key, needle))
+    return failures
+
+FENCE_NAME = "gatebound-criterion"
+
+#: Optional single fence declaring the run-wide budget.
+BUDGET_FENCE_NAME = "gatebound-budget"
+
+STALE_REASON = "contract_stale"
+
+#: ADR-0024: criterion tiers. `turn` criteria run at every Stop under build;
+#: `verify` criteria only under /gatebound:verify, `contract run` and baseline.
+TIERS = ("turn", "verify")
+DEFAULT_TIER = "turn"
+
+#: ``execute`` reason when the selected tiers cover no criterion.
+NO_CRITERIA_IN_TIER_REASON = "no_criteria_in_tier"
+
+#: ``execute`` reason when every criterion that ran passed but the Stop gate's
+#: start budget left others unjudged (ADR-0024 review): not judged is not ok.
+BUDGET_DEFERRED_REASON = "deferred_by_stop_budget"
+
+#: ADR-0031 decision 2: one contract run at a time. ``execute`` holds
+#: ``.gatebound/runs/contract.lock`` while it runs; a second run waits up to
+#: LOCK_WAIT_S, then judges nothing and says why. A lock older than
+#: LOCK_STALE_S (the run-wide ceiling plus a margin), or whose process is
+#: gone, is stale and taken over.
+CONTRACT_BUSY_REASON = "contract_busy"
+LOCK_NAME = "contract.lock"
+LOCK_WAIT_S = 30.0
+LOCK_POLL_S = 0.25
+LOCK_STALE_S = MAX_BUDGET_S + 60.0
+
+
+def validate_tier(tier: Any, ident: str = "?") -> List[str]:
+    """Problems with a criterion's ``tier``; empty when valid."""
+    if isinstance(tier, str) and tier in TIERS:
+        return []
+    return [f"criterion '{ident}' has tier {tier!r}; expected one of: {', '.join(TIERS)}"]
+
+# Matches a fenced block whose info string is exactly the fence name. The
+# opening fence must start at the beginning of a line, which keeps prose that
+# merely mentions the fence name out of the results.
+_FENCE_RE = re.compile(
+    r"^[ \t]*```[ \t]*(?P<name>[A-Za-z0-9_-]+)[ \t]*\r?\n(?P<body>.*?)^[ \t]*```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def _now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_fences(text: str, name: str) -> List[Dict[str, Any]]:
+    """Return the JSON objects of every ```` ```<name> ```` fence in *text*.
+
+    Raises :class:`ValueError` naming the fence index when a block does not
+    parse, so the user learns which one to fix rather than getting a bare
+    "invalid JSON".
+    """
+    results: List[Dict[str, Any]] = []
+    index = 0
+    accepted = names.fence_names(name)  # either prefix (ADR-0029)
+    for match in _FENCE_RE.finditer(text or ""):
+        if match.group("name") not in accepted:
+            continue
+        index += 1
+        body = match.group("body")
+        try:
+            parsed = json.loads(body)
+        except ValueError as err:
+            raise ValueError(f"{name} fence #{index} is not valid JSON: {err}") from err
+        if not isinstance(parsed, dict):
+            raise ValueError(f"{name} fence #{index} must contain a JSON object")
+        results.append(parsed)
+    return results
+
+
+def _normalize_criterion(raw: Dict[str, Any], index: int) -> Dict[str, Any]:
+    """Validate one criterion and fill in its defaults."""
+    ident = raw.get("id")
+    if not isinstance(ident, str) or not ident.strip():
+        raise ValueError(f"criterion #{index} is missing a non-empty string 'id'")
+
+    argv = raw.get("argv")
+    if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
+        raise ValueError(f"criterion '{ident}' needs 'argv' as a non-empty list of strings")
+
+    expect = raw.get("expect")
+    if expect is None:
+        expect = {"exit": 0}
+    problems = validate_expect(expect, ident.strip() if isinstance(ident, str) else "?")
+    if problems:
+        raise ValueError("; ".join(problems))
+    expect = dict(expect)
+    expect.setdefault("exit", 0)
+
+    artifacts = raw.get("artifacts")
+    if not isinstance(artifacts, list):
+        artifacts = []
+
+    try:
+        timeout_s = float(raw.get("timeout_s", DEFAULT_TIMEOUT_S))
+    except (TypeError, ValueError):
+        timeout_s = float(DEFAULT_TIMEOUT_S)
+    if timeout_s <= 0:
+        timeout_s = float(DEFAULT_TIMEOUT_S)
+
+    tier = raw.get("tier", DEFAULT_TIER)
+    problems = validate_tier(tier, ident.strip())
+    if problems:
+        raise ValueError("; ".join(problems))
+
+    return {
+        "id": ident.strip(),
+        "argv": list(argv),
+        "expect": expect,
+        "timeout_s": timeout_s,
+        "artifacts": [str(a) for a in artifacts],
+        "tier": tier,
+    }
+
+
+def gate_file(root: pathlib.Path) -> pathlib.Path:
+    return paths.spec_dir(root) / "05-gate.md"
+
+
+#: The design files a build is judged against alongside ``05-gate.md``
+#: (ADR-0008 decision 6). A worker builds against these, so a change to one of
+#: them makes the frozen contract describe a design that no longer exists.
+#: Absent files hash to ``""``, which is a real recorded value: creating one
+#: later is as much a change as editing one.
+INPUT_FILES = ("spec/02-screens.md", "spec/02-design.md", "spec/tokens.json")
+
+
+def input_hashes(root: pathlib.Path) -> Dict[str, str]:
+    """Current sha256 of every contract input, ``""`` for the absent ones."""
+    return {
+        rel: approval.sha256_file(pathlib.Path(root) / rel) for rel in INPUT_FILES
+    }
+
+
+def stale_inputs(root: pathlib.Path) -> List[str]:
+    """Input paths whose content differs from what ``derive`` recorded.
+
+    Empty for a fresh contract, for no contract at all, and for one derived
+    before inputs were recorded — those are judged on the gate file alone, so
+    there is nothing here to report.
+    """
+    data = load(root)
+    if data is None:
+        return []
+    recorded = data.get("inputs")
+    if not isinstance(recorded, dict):
+        return []
+    current = input_hashes(root)
+    return [rel for rel in INPUT_FILES if current.get(rel, "") != recorded.get(rel, "")]
+
+
+def _parse_budget(text: str) -> float:
+    """Return the declared total budget, or the default when none is declared."""
+    fences = parse_fences(text, BUDGET_FENCE_NAME)
+    if not fences:
+        return TOTAL_BUDGET_S
+    if len(fences) > 1:
+        raise ValueError(
+            "spec/05-gate.md declares %d %s fences; exactly one is allowed"
+            % (len(fences), BUDGET_FENCE_NAME)
+        )
+    raw = fences[0].get("total_budget_s")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ValueError("%s needs a numeric 'total_budget_s'" % BUDGET_FENCE_NAME)
+    value = float(raw)
+    if value <= 0:
+        raise ValueError("total_budget_s must be greater than 0, got %g" % value)
+    if value > MAX_BUDGET_S:
+        raise ValueError(
+            "total_budget_s %g exceeds the %g second ceiling; a gate that runs "
+            "longer should be a build step, not a stop-gate check"
+            % (value, MAX_BUDGET_S)
+        )
+    return value
+
+
+def _parse_gate(root: pathlib.Path) -> "tuple":
+    """``(total_budget_s, criteria)`` from ``spec/05-gate.md``, each criterion
+    carrying the current hashes of its grading files (ADR-0023)."""
+    source = gate_file(root)
+    try:
+        text = source.read_text(encoding="utf-8")
+    except OSError as err:
+        raise FileNotFoundError(f"cannot read {source}: {err}") from err
+
+    total_budget_s = _parse_budget(text)
+    raw_criteria = parse_fences(text, FENCE_NAME)
+    criteria = [_normalize_criterion(item, i + 1) for i, item in enumerate(raw_criteria)]
+
+    seen = set()
+    for crit in criteria:
+        if crit["id"] in seen:
+            raise ValueError(f"duplicate criterion id '{crit['id']}'")
+        seen.add(crit["id"])
+        # ADR-0023: the files that judge this criterion, as they are now.
+        crit["grading"] = runcheck.grading_hashes(crit["argv"], root)
+    return total_budget_s, criteria
+
+
+def derive(root: pathlib.Path) -> Dict[str, Any]:
+    """Parse ``spec/05-gate.md`` into ``.gatebound/contract.json`` and return it."""
+    source = gate_file(root)
+    total_budget_s, criteria = _parse_gate(root)
+
+    data = {
+        "version": VERSION,
+        "source_sha256": approval.sha256_file(source),
+        "inputs": input_hashes(root),
+        "total_budget_s": total_budget_s,
+        "criteria": criteria,
+        "derived_at": _now(),
+    }
+    config.write_json_atomic(paths.contract_file(root), data)
+    return data
+
+
+#: ``contract.execute`` reason when the contract was re-derived after an
+#: approved grading file changed and ``05-gate.md`` was not approved again.
+GRADING_UNAPPROVED_REASON = "grading_unapproved"
+
+
+def approved_grading(root: pathlib.Path, gate_sha256: str) -> Dict[str, Dict[str, str]]:
+    """What an approval of ``05-gate.md`` (hashing to *gate_sha256*) pins
+    beside the file: ``{criterion id: {relpath: sha256}}``.
+
+    Taken from ``contract.json`` when it was derived from that very file, so
+    the approval covers the contract the user was shown; otherwise hashed now
+    from the file's criteria. ``{}`` when the file cannot be parsed, since no
+    contract can then be derived from it either.
+    """
+    data = load(root)
+    if data is not None and data.get("source_sha256") == gate_sha256:
+        criteria = data.get("criteria") or []
+    else:
+        try:
+            criteria = _parse_gate(root)[1]
+        except (OSError, ValueError, TypeError):
+            return {}
+    pinned: Dict[str, Dict[str, str]] = {}
+    for crit in criteria:
+        if isinstance(crit, dict) and isinstance(crit.get("grading"), dict):
+            pinned[str(crit.get("id"))] = {str(k): str(v) for k, v in crit["grading"].items()}
+    return pinned
+
+
+def unapproved_grading(root: pathlib.Path) -> List[str]:
+    """Approved grading files the derived contract no longer records with the
+    approved hash, sorted (ADR-0023, F1).
+
+    A re-derive records the current hashes, so without this a test edited
+    after approval and then re-derived would count again with nobody having
+    approved the change. Files that did not exist at approval were never
+    approved and are not compared. Empty when there is no contract, no
+    approval of ``05-gate.md``, an approval recorded without grading (before
+    0.15.0), or an approval of another version of the file (a stale approval
+    in its own right).
+    """
+    data = load(root)
+    if data is None:
+        return []
+    entry = approval.find(root, approval.GATE_TARGET)
+    if not isinstance(entry, dict) or not isinstance(entry.get("grading"), dict):
+        return []
+    if entry.get("sha256") != data.get("source_sha256"):
+        return []
+    recorded = {str(c.get("id")): (c.get("grading") if isinstance(c.get("grading"), dict) else {})
+                for c in (data.get("criteria") or []) if isinstance(c, dict)}
+    changed = set()
+    for crit_id, pinned in entry["grading"].items():
+        if not isinstance(pinned, dict):
+            continue
+        now = recorded.get(str(crit_id), {})
+        for rel, digest in pinned.items():
+            if now.get(rel) != digest:
+                changed.add(str(rel))
+    return sorted(changed)
+
+
+#: ADR-0027: reasons :func:`integrity` gives before any criterion runs.
+#: ``gate_not_approved``: ``approve check spec/05-gate.md`` is not ``ok``
+#: (no approval, a stale one, or — with :data:`GRADING_UNAPPROVED_REASON` as
+#: the second reason — a pinned grading file the contract no longer records).
+GATE_NOT_APPROVED_REASON = "gate_not_approved"
+#: ``contract_mismatch``: ``contract.json`` is not what ``05-gate.md`` derives.
+CONTRACT_MISMATCH_REASON = "contract_mismatch"
+
+_ABSENT = object()
+
+
+def mismatch(root: pathlib.Path) -> List[str]:
+    """What differs between ``contract.json`` and ``05-gate.md`` parsed again
+    in memory (ADR-0027), as short strings; empty when they agree or there is
+    no contract.
+
+    Compared: ``total_budget_s`` and the ordered criteria with every field but
+    ``grading`` (extra keys included). ``grading`` is compared by its keys —
+    each recorded path must be a grading file of the criterion's argv now, or
+    be absent — not by hash: a grading file changing after derive is ADR-0023's
+    per-criterion ``unverified``, and the approved hashes are the approval's
+    pins, which :func:`integrity` checks first.
+    """
+    data = load(root)
+    if data is None:
+        return []
+    try:
+        budget, criteria = _parse_gate(root)
+    except (OSError, ValueError, TypeError) as err:
+        return ["spec/05-gate.md does not parse: %s" % str(err)[:80]]
+    out: List[str] = []
+    if data.get("total_budget_s") != budget:
+        out.append("total_budget_s")
+    recorded = data.get("criteria")
+    if not isinstance(recorded, list) or not all(isinstance(c, dict) for c in recorded):
+        return out + ["criteria"]
+    want_ids = [c["id"] for c in criteria]
+    have_ids = [c.get("id") for c in recorded]
+    if want_ids != have_ids:
+        return out + ["criterion ids: %s, gate declares %s" % (
+            ", ".join(str(i) for i in have_ids) or "none", ", ".join(want_ids) or "none")]
+    for want, have in zip(criteria, recorded):
+        ident = want["id"]
+        keys = sorted((set(want) | set(have)) - {"grading"})
+        for key in keys:
+            if want.get(key, _ABSENT) != have.get(key, _ABSENT):
+                out.append("%s: %s" % (ident, key))
+        grading = have.get("grading", {})
+        if not isinstance(grading, dict):
+            out.append("%s: grading" % ident)
+            continue
+        allowed = set(runcheck.grading_files(want["argv"], root))
+        for rel in sorted(str(r) for r in grading):
+            if rel not in allowed and os.path.lexists(os.path.join(str(root), *rel.split("/"))):
+                out.append("%s: grading %s" % (ident, rel))
+    return out
+
+
+def _refusal(reasons: List[str], **extra: Any) -> Dict[str, Any]:
+    result: Dict[str, Any] = {"verdict": verdict.UNVERIFIED, "criteria": [],
+                              "reasons": list(reasons)}
+    result.update(extra)
+    return result
+
+
+def integrity(root: pathlib.Path, require_approval: bool = True) -> Optional[Dict[str, Any]]:
+    """``None`` when the contract may be judged, else the ``unverified``
+    result to report instead (ADR-0027), checked in order: ``contract_stale``,
+    ``gate_not_approved`` (only with *require_approval*), ``contract_mismatch``.
+    ``None`` also when there is no contract: :func:`execute` reports that.
+
+    The Stop gate and ``contract run`` require the approval; ``contract
+    baseline`` does not, because ``/gatebound:gate`` runs it before approval.
+    """
+    if load(root) is None:
+        return None
+    if status(root) != verdict.OK:
+        return _refusal([STALE_REASON])
+    if require_approval:
+        found, changed = approval.check_gate(root)
+        if found != verdict.OK:
+            if changed:
+                return _refusal([GATE_NOT_APPROVED_REASON, GRADING_UNAPPROVED_REASON],
+                                approval=found, unapproved_grading=list(changed))
+            return _refusal([GATE_NOT_APPROVED_REASON], approval=found)
+    diff = mismatch(root)
+    if diff:
+        return _refusal([CONTRACT_MISMATCH_REASON], mismatch=diff)
+    return None
+
+
+def load(root: pathlib.Path) -> Optional[Dict[str, Any]]:
+    """Read ``.gatebound/contract.json``, or ``None`` when absent/corrupt."""
+    try:
+        raw = json.loads(paths.contract_file(root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def status(root: pathlib.Path) -> str:
+    """``ok`` when fresh, ``fail`` when stale, ``unverified`` when absent.
+
+    Fresh means the gate file **and** every recorded design input still hash to
+    what ``derive`` froze. A contract written before inputs were recorded has no
+    ``inputs`` key and is judged on the gate file alone, exactly as before.
+    """
+    data = load(root)
+    if data is None:
+        return verdict.UNVERIFIED
+    current = approval.sha256_file(gate_file(root))
+    if not current:
+        return verdict.FAIL
+    if current != data.get("source_sha256"):
+        return verdict.FAIL
+    return verdict.FAIL if stale_inputs(root) else verdict.OK
+
+
+def _tail(text: str) -> str:
+    """Keep the last :data:`TAIL_CHARS` characters — errors live at the end."""
+    if text is None:
+        return ""
+    text = str(text)
+    if len(text) <= TAIL_CHARS:
+        return text
+    return "…(truncated)…" + text[-TAIL_CHARS:]
+
+
+def _artifact_hashes(
+    root: pathlib.Path, artifacts: List[str]
+) -> "tuple[Dict[str, str], List[str]]":
+    """Hash each artifact, reporting any that is missing or escapes the root.
+
+    Containment is checked on the realpath so a symlink pointing outside the
+    project cannot be presented as evidence produced inside it.
+    """
+    hashes: Dict[str, str] = {}
+    problems: List[str] = []
+    real_root = os.path.realpath(str(root))
+
+    for entry in artifacts:
+        rel = str(entry)
+        if os.path.isabs(rel):
+            problems.append(f"artifact must be relative: {rel}")
+            continue
+        if ".." in pathlib.PurePosixPath(rel.replace("\\", "/")).parts:
+            problems.append(f"artifact must not contain '..': {rel}")
+            continue
+
+        candidate = pathlib.Path(root) / rel
+        real = os.path.realpath(str(candidate))
+        if real != real_root and not real.startswith(real_root + os.sep):
+            problems.append(f"artifact escapes the project root: {rel}")
+            continue
+        if not os.path.isfile(real):
+            problems.append(f"missing artifact: {rel}")
+            continue
+
+        digest = approval.sha256_file(pathlib.Path(real))
+        if not digest:
+            problems.append(f"unreadable artifact: {rel}")
+            continue
+        hashes[rel] = digest
+
+    return hashes, problems
+
+
+#: Every grading-changed detail starts with this; the Stop gate keys its
+#: localized hint on it.
+GRADING_MARKER = "grading file changed since approval"
+#: The instruction before the paths: `execute` cuts a reason at 120
+#: characters, and the cut must land in the paths, not the instruction.
+GRADING_CHANGED = (GRADING_MARKER + " (if intended, re-run /gatebound:gate to "
+                   "re-approve; otherwise revert it): %s")
+
+
+def _run_one(
+    root: pathlib.Path, crit: Dict[str, Any], remaining: float
+) -> Dict[str, Any]:
+    """Execute one criterion, then hold back an `ok` whose grading files
+    changed since derive (ADR-0023): it becomes `unverified`, never `ok`;
+    any other verdict stands."""
+    result = _run_one_raw(root, crit, remaining)
+    if result.get("verdict") == verdict.OK:
+        changed = runcheck.changed_grading(crit.get("grading"), root)
+        if changed:
+            result["verdict"] = verdict.UNVERIFIED
+            result["detail"] = GRADING_CHANGED % ", ".join(changed)
+            result["grading_changed"] = changed
+    return result
+
+
+def _run_one_raw(
+    root: pathlib.Path, crit: Dict[str, Any], remaining: float
+) -> Dict[str, Any]:
+    """Execute one criterion and classify the outcome."""
+    result: Dict[str, Any] = {
+        "id": crit["id"],
+        "verdict": verdict.UNVERIFIED,
+        "exit": None,
+        "elapsed_s": 0.0,
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "artifact_hashes": {},
+    }
+
+    if remaining <= 0:
+        result["stderr_tail"] = "budget exhausted before this criterion ran"
+        return result
+
+    timeout = min(float(crit.get("timeout_s", DEFAULT_TIMEOUT_S)), remaining)
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(  # noqa: S603 - argv list, shell=False by default
+            paths.expand_argv(crit["argv"]),
+            cwd=str(root),
+            env=runcheck.child_env(),
+            capture_output=True,
+            timeout=timeout,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        result["elapsed_s"] = round(time.monotonic() - started, 3)
+        result["stderr_tail"] = f"timeout after {timeout:.1f}s"
+        return result  # stays unverified
+    except (OSError, ValueError) as err:
+        # Missing binary, permission denied, bad argv: we learned nothing about
+        # the code under test, so this is unverified rather than a failure.
+        result["elapsed_s"] = round(time.monotonic() - started, 3)
+        result["stderr_tail"] = f"could not execute: {err}" + runcheck.stale_path_hint(
+            (crit.get("argv") or [None])[0])
+        return result
+
+    result["elapsed_s"] = round(time.monotonic() - started, 3)
+    result["exit"] = completed.returncode
+    completed.stdout = runcheck.decode_output(completed.stdout)
+    completed.stderr = runcheck.decode_output(completed.stderr)
+    result["stdout_tail"] = _tail(completed.stdout)
+    result["stderr_tail"] = _tail(completed.stderr)
+
+    expect = crit.get("expect", {}) or {}
+    expected_exit = expect.get("exit", 0)
+    # ADR-0022: a runner that ran no tests, or skipped every test
+    # (Amendment A), proved nothing, pass or fail.
+    empty = runcheck.ran_no_tests(completed.stdout, completed.stderr, completed.returncode)
+    no_tests = runcheck.describe_empty(empty, completed.returncode) if empty else ""
+    if completed.returncode != expected_exit:
+        if no_tests and expected_exit == 0:
+            result["detail"] = no_tests
+            if runcheck.signature_kind(empty) == runcheck.ENVIRONMENT_KIND:
+                result["environment"] = True  # ADR-0031: never reused
+            return result  # stays unverified
+        result["verdict"] = verdict.FAIL
+        return result
+
+    unmet = judge_output(expect, completed.stdout, completed.stderr)
+    if unmet:
+        result["verdict"] = verdict.FAIL
+        result["stderr_tail"] = _tail(
+            (result["stderr_tail"] + "\n" + "; ".join(unmet)).strip()
+        )
+        return result
+
+    hashes, problems = _artifact_hashes(root, crit.get("artifacts", []))
+    result["artifact_hashes"] = hashes
+    if problems:
+        result["verdict"] = verdict.FAIL
+        result["stderr_tail"] = _tail(
+            (result["stderr_tail"] + "\n" + "; ".join(problems)).strip()
+        )
+        return result
+
+    if no_tests:
+        result["detail"] = no_tests
+        return result  # stays unverified
+    result["verdict"] = verdict.OK
+    return result
+
+
+def _lock_path(root: pathlib.Path) -> pathlib.Path:
+    return paths.runs_dir(root) / LOCK_NAME
+
+
+def _lock_holder_alive(lock: pathlib.Path) -> bool:
+    """Whether the run that wrote *lock* may still be running. An unreadable
+    or half-written lock counts as held while it is younger than a few
+    seconds (its writer may be between create and write)."""
+    try:
+        info = json.loads(lock.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        try:
+            return time.time() - lock.stat().st_mtime < 5.0
+        except OSError:
+            return False
+    pid, started = (info.get("pid"), info.get("started_at")) if isinstance(info, dict) else (None, None)
+    if not isinstance(pid, int) or isinstance(pid, bool) or not isinstance(started, (int, float)):
+        return False
+    if time.time() - float(started) > LOCK_STALE_S:
+        return False
+    if pid == os.getpid():
+        return True
+    from . import jobs  # lazy: jobs imports far more than contract needs
+    return jobs._pid_alive(pid)  # tasklist on Windows; never os.kill there
+
+
+def _acquire_lock(root: pathlib.Path) -> Optional[bool]:
+    """Take the contract lock: True when held, False when another run kept it
+    past LOCK_WAIT_S, None when no lock can be made here at all (then the run
+    goes ahead unlocked, as before ADR-0031 — a hook must not stall)."""
+    lock = _lock_path(root)
+    try:
+        paths.ensure_dir(lock.parent)
+    except OSError:
+        return None
+    deadline = time.monotonic() + max(0.0, float(LOCK_WAIT_S))
+    while True:
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if not _lock_holder_alive(lock):
+                try:
+                    os.unlink(str(lock))
+                except OSError:
+                    pass
+                continue
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(LOCK_POLL_S)
+            continue
+        except OSError:
+            return None
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "started_at": time.time()}, handle)
+        return True
+
+
+def _release_lock(root: pathlib.Path) -> None:
+    """Remove the lock if this process holds it; never another run's."""
+    lock = _lock_path(root)
+    try:
+        info = json.loads(lock.read_text(encoding="utf-8"))
+        if isinstance(info, dict) and info.get("pid") == os.getpid():
+            os.unlink(str(lock))
+    except (OSError, ValueError):
+        pass
+
+
+def execute(root: pathlib.Path, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+    """:func:`_execute` under the contract lock (ADR-0031 decision 2). When
+    another run holds it past LOCK_WAIT_S the result is ``unverified`` with
+    :data:`CONTRACT_BUSY_REASON`, judges nothing, and is never recorded."""
+    held = _acquire_lock(root)
+    if held is False:
+        return {
+            "verdict": verdict.UNVERIFIED,
+            "criteria": [],
+            "reasons": ["%s: another contract run held %s for %ss"
+                        % (CONTRACT_BUSY_REASON, LOCK_NAME, int(LOCK_WAIT_S))],
+            "busy": True,
+        }
+    try:
+        return _execute(root, *args, **kwargs)
+    finally:
+        if held:
+            _release_lock(root)
+
+
+def _execute(
+    root: pathlib.Path,
+    total_budget_s: Optional[float] = None,
+    cap_s: Optional[float] = None,
+    first: Optional[List[str]] = None,
+    tiers: Optional[Sequence[str]] = None,
+    start_budget_s: Optional[float] = None,
+    deferred_first: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Run every criterion within *total_budget_s* and aggregate the verdict.
+
+    *cap_s* lowers whatever budget applies (declared or explicit) to at most
+    that many seconds. The stop gate uses it so a run never outlives the hook
+    timeout Claude Code gives it; a run cut short by the cap is ``unverified``,
+    which is honest, where a killed hook would record nothing at all.
+
+    *first* names criterion ids to run before the rest, in their declared
+    order (ADR-0020: the Stop gate puts last run's failures first, so a budget
+    cut lands on criteria that last passed).
+
+    *tiers* (ADR-0024) limits the run to criteria of those tiers; ``None``
+    runs every tier. *start_budget_s* stops starting criteria once that many
+    seconds have passed since the run began, while the run-wide budget still
+    has time left. Criteria left out either way are returned in ``deferred``
+    — not run, not judged and not in ``criteria``. A budget deferral keeps
+    the verdict from being ``ok``: when everything that ran passed, the
+    verdict is ``unverified`` with :data:`BUDGET_DEFERRED_REASON` naming the
+    deferred ids. ``scope`` is the sorted ids actually judged.
+    *deferred_first* names ids to run before *first* (the Stop gate passes
+    the ones its budget deferred last time, so every Stop judges one new).
+
+    Returns ``{"verdict", "criteria", "reasons"}``. ``reasons`` holds short
+    human-readable strings naming what failed or went unverified; the stop gate
+    puts them in front of the user.
+    """
+    data = load(root)
+    if data is None:
+        return {
+            "verdict": verdict.UNVERIFIED,
+            "criteria": [],
+            "reasons": ["no contract: run `gatebound contract derive` first"],
+        }
+
+    if status(root) != verdict.OK:
+        return {
+            "verdict": verdict.UNVERIFIED,
+            "criteria": [],
+            "reasons": [STALE_REASON],
+        }
+
+    unapproved = unapproved_grading(root)
+    if unapproved:
+        return {
+            "verdict": verdict.UNVERIFIED,
+            "criteria": [],
+            "reasons": [GRADING_UNAPPROVED_REASON],
+            "unapproved_grading": unapproved,
+        }
+
+    criteria = data.get("criteria") or []
+    if not criteria:
+        return {
+            "verdict": verdict.UNVERIFIED,
+            "criteria": [],
+            "reasons": ["contract has no criteria"],
+        }
+
+    deferred: List[Dict[str, Any]] = []
+    if tiers is not None:
+        wanted_tiers = set(tiers)
+        for crit in criteria:
+            if _tier_of(crit) not in wanted_tiers:
+                deferred.append({"id": crit.get("id"), "tier": _tier_of(crit), "reason": "tier"})
+        criteria = [c for c in criteria if _tier_of(c) in wanted_tiers]
+    if not criteria:
+        return {
+            "verdict": verdict.UNVERIFIED,
+            "criteria": [],
+            "reasons": [NO_CRITERIA_IN_TIER_REASON],
+            "scope": [],
+            "deferred": deferred,
+        }
+
+    if total_budget_s is None:
+        declared = data.get("total_budget_s")
+        budget = float(declared) if isinstance(declared, (int, float)) and not isinstance(declared, bool) else TOTAL_BUDGET_S
+    else:
+        budget = float(total_budget_s)
+    if cap_s is not None:
+        budget = min(budget, float(cap_s))
+    started = time.monotonic()
+    deadline = started + budget
+    for ids in (first, deferred_first):  # the later group ends up ahead
+        if ids:
+            wanted = set(ids)
+            criteria = [c for c in criteria if c.get("id") in wanted] + [
+                c for c in criteria if c.get("id") not in wanted
+            ]
+    results: List[Dict[str, Any]] = []
+    for crit in criteria:
+        now = time.monotonic()
+        # ADR-0024: once the Stop gate's start budget is spent, the rest are
+        # deferred — unless the contract's own budget is spent too, which is
+        # still "budget exhausted" `unverified` (the contract's limit).
+        if (start_budget_s is not None and now - started >= float(start_budget_s)
+                and deadline - now > 0):
+            deferred.append({"id": crit.get("id"), "tier": _tier_of(crit), "reason": "budget"})
+            continue
+        results.append(_run_one(root, crit, deadline - now))
+
+    return _summarize(results, deferred, budget)
+
+
+def _summarize(results: List[Dict[str, Any]], deferred: List[Dict[str, Any]],
+               budget: Any) -> Dict[str, Any]:
+    """Aggregate what was judged. A budget deferral is never ``ok``."""
+    reasons: List[str] = []
+    for item in results:
+        if item["verdict"] == verdict.FAIL:
+            reasons.append(f"{item['id']}: fail (exit {item.get('exit')})")
+        elif item["verdict"] == verdict.UNVERIFIED:
+            detail = item.get("detail") or item.get("stderr_tail") or "not verified"
+            reasons.append(f"{item['id']}: unverified ({detail.strip().splitlines()[0][:120]})")
+    overall = verdict.aggregate(results)
+    budget_ids = budget_deferred_ids({"deferred": deferred})
+    if budget_ids and overall == verdict.OK:
+        overall = verdict.UNVERIFIED
+        reasons.append(f"{BUDGET_DEFERRED_REASON}: {', '.join(budget_ids)}")
+    return {
+        "verdict": overall,
+        "criteria": results,
+        "total_budget_s": budget,
+        "reasons": reasons,
+        "scope": sorted(str(c.get("id")) for c in results),
+        "deferred": deferred,
+    }
+
+
+def budget_deferred_ids(result: Dict[str, Any]) -> List[str]:
+    """Ids a result left unjudged because the Stop gate's budget ran out."""
+    return [str(d.get("id")) for d in (result.get("deferred") or [])
+            if isinstance(d, dict) and d.get("reason") == "budget"]
+
+
+def carry_forward(result: Dict[str, Any], previous: Dict[str, Any]) -> Dict[str, Any]:
+    """Fill *result*'s budget-deferred criteria with *previous*'s verdicts.
+
+    The caller guarantees *previous* was judged on the same tree, contract and
+    no-tests signatures (:func:`same_tree_record`), so its verdict for a
+    criterion this run did not reach still holds. What neither run judged
+    stays deferred, and the result stays unverified until nothing is.
+    """
+    judged = {c.get("id"): c for c in (previous.get("criteria") or []) if isinstance(c, dict)}
+    ran = {c.get("id") for c in result.get("criteria") or []}
+    results = list(result.get("criteria") or [])
+    deferred: List[Dict[str, Any]] = []
+    carried = 0
+    for item in result.get("deferred") or []:
+        cid = item.get("id") if isinstance(item, dict) else None
+        if cid is not None and item.get("reason") == "budget" and cid in judged \
+                and cid not in ran:
+            results.append(dict(judged[cid], carried=True))
+            carried += 1
+        else:
+            deferred.append(item)
+    if not carried:
+        return result
+    merged = dict(result)
+    merged.update(_summarize(results, deferred, result.get("total_budget_s")))
+    return merged
+
+
+def _tier_of(crit: Dict[str, Any]) -> str:
+    """A criterion's tier; a contract derived before ADR-0024 has none."""
+    tier = crit.get("tier")
+    return tier if tier in TIERS else DEFAULT_TIER
+
+
+def tier_scope(root: pathlib.Path, tiers: Optional[Sequence[str]] = None) -> List[str]:
+    """Sorted ids of the current contract's criteria in *tiers* (``None``: all)."""
+    data = load(root) or {}
+    wanted = set(tiers) if tiers is not None else set(TIERS)
+    return sorted(str(c.get("id")) for c in data.get("criteria") or []
+                  if _tier_of(c) in wanted)
+
+
+# --------------------------------------------------------------------------
+# Stop-gate result reuse (ADR-0020)
+# --------------------------------------------------------------------------
+
+#: Directories whose contents are state or build output that criteria
+#: themselves rewrite; they never decide whether the code changed.
+FINGERPRINT_SKIP_DIRS = frozenset({
+    ".git", *paths.STATE_DIRNAMES, "node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo",
+    ".cache", "dist", "build", "out", "coverage", "test-results",
+    "playwright-report", "__pycache__", ".venv", "venv",
+})
+FINGERPRINT_SKIP_SUFFIXES = (".tsbuildinfo",)
+FINGERPRINT_SKIP_FILES = frozenset({"spec/PROGRESS.md"})
+#: Past this many files the fingerprint is not computed and nothing is reused.
+FINGERPRINT_MAX_FILES = 20000
+LAST_RESULT_NAME = "contract-last.json"
+
+
+def tree_fingerprint(root: pathlib.Path) -> Optional[str]:
+    """sha256 over ``(path, size, mtime_ns)`` of the project's source files.
+
+    ``None`` when it could not be computed (too many files, unreadable tree):
+    the caller then runs the contract, since "could not tell" is not "same".
+    """
+    root = pathlib.Path(root)
+    skip = set(FINGERPRINT_SKIP_FILES)
+    data = load(root) or {}
+    for crit in data.get("criteria") or []:
+        for artifact in crit.get("artifacts") or []:
+            if isinstance(artifact, str):
+                rel = artifact.replace("\\", "/")
+                skip.add(rel[2:] if rel.startswith("./") else rel)
+    entries: List[str] = []
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(d for d in dirnames if d not in FINGERPRINT_SKIP_DIRS)
+            rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+            for name in sorted(filenames):
+                if name.endswith(FINGERPRINT_SKIP_SUFFIXES):
+                    continue
+                rel = name if rel_dir == "." else rel_dir + "/" + name
+                if rel in skip:
+                    continue
+                try:
+                    st = os.stat(os.path.join(dirpath, name))
+                except OSError:
+                    continue
+                entries.append("%s\0%d\0%d" % (rel, st.st_size, st.st_mtime_ns))
+                if len(entries) > FINGERPRINT_MAX_FILES:
+                    return None
+    except OSError:
+        return None
+    return hashlib.sha256("\n".join(entries).encode("utf-8")).hexdigest()
+
+
+def _last_result_path(root: pathlib.Path) -> pathlib.Path:
+    return paths.runs_dir(root) / LAST_RESULT_NAME
+
+
+def load_last(root: pathlib.Path) -> Optional[Dict[str, Any]]:
+    """The Stop gate's last recorded run, or ``None``."""
+    try:
+        raw = json.loads(_last_result_path(root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def save_last(root: pathlib.Path, result: Dict[str, Any]) -> None:
+    """Record *result* with the contract hash and the tree as it is now. A
+    busy result (ADR-0031) judged nothing and is not recorded: it must not
+    replace the result of the run that held the lock."""
+    if result.get("busy"):
+        return
+    data = load(root) or {}
+    record = {
+        "source_sha256": data.get("source_sha256"),
+        # ADR-0027: the exact contract file judged; `.gatebound` is outside the
+        # tree fingerprint, so an edited contract.json must not reuse this.
+        "contract_sha256": approval.sha256_file(paths.contract_file(root)),
+        "fingerprint": tree_fingerprint(root),
+        # ADR-0022: a result judged under other no-tests signatures (or before
+        # there were any) must not be reused.
+        "signatures_sha256": runcheck.signatures_digest(),
+        "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        # ADR-0024: which criteria the run judged, so a turn-tier or
+        # budget-cut result is never reused where a full one is needed.
+        "scope": list(result.get("scope") or []),
+        "result": result,
+    }
+    config.write_json_atomic(_last_result_path(root), record)
+
+
+def same_tree_record(root: pathlib.Path) -> Optional[Dict[str, Any]]:
+    """The last record when the contract, the no-tests signatures and the
+    tree are unchanged since it was written, whatever it covered."""
+    last = load_last(root)
+    data = load(root)
+    if not last or not data or status(root) != verdict.OK:
+        return None
+    if last.get("source_sha256") != data.get("source_sha256"):
+        return None
+    if not last.get("contract_sha256") or (
+            last.get("contract_sha256") != approval.sha256_file(paths.contract_file(root))):
+        return None
+    if "signatures_sha256" not in last or (
+            last.get("signatures_sha256") != runcheck.signatures_digest()):
+        return None
+    if not isinstance(last.get("result"), dict):
+        return None
+    current = tree_fingerprint(root)
+    if not current or current != last.get("fingerprint"):
+        return None
+    return last
+
+
+def covers(root: pathlib.Path, record: Optional[Dict[str, Any]],
+           tiers: Optional[Sequence[str]] = None) -> bool:
+    """Whether *record* judged exactly what *tiers* selects now (``None``:
+    every tier). A record with a Stop-budget deferral covers nothing: its
+    scope is only what it judged, and it is never a full judgement."""
+    if not record or not isinstance(record.get("scope"), list):
+        return False
+    if budget_deferred_ids(record.get("result") or {}):
+        return False
+    # ADR-0031: a runner that could not start (a port another run held)
+    # judged nothing about the code; run again rather than repeat it.
+    if any(isinstance(c, dict) and c.get("environment")
+           for c in (record.get("result") or {}).get("criteria") or []):
+        return False
+    return sorted(str(i) for i in record["scope"]) == tier_scope(root, tiers)
+
+
+def reusable_last(root: pathlib.Path,
+                  tiers: Optional[Sequence[str]] = None) -> Optional[Dict[str, Any]]:
+    """The last record when the contract, the tree, the no-tests signatures
+    and the scope that *tiers* selects (``None``: every tier) are all
+    unchanged, and it has no Stop-budget deferral."""
+    last = same_tree_record(root)
+    return last if covers(root, last, tiers) else None
+
+
+# --------------------------------------------------------------------------
+# Gate-time baseline (ADR-0022)
+# --------------------------------------------------------------------------
+
+BASELINE_NAME = "baseline.json"
+BASELINE_CLASSES = ("already_passes", "not_yet_runnable", "fails", "command_error",
+                    "unverified")
+ALREADY_PASSES_NOTE = "passes before any work — confirm it tests new behaviour"
+
+
+def _baseline_tasks(root: pathlib.Path) -> List[Dict[str, Any]]:
+    """Task fences from spec/04-tasks.md, for their write scopes; [] if none."""
+    try:
+        text = (pathlib.Path(root) / "spec" / "04-tasks.md").read_text(encoding="utf-8")
+        return [t for t in parse_fences(text, "gatebound-task") if isinstance(t, dict)]
+    except (OSError, ValueError):
+        return []
+
+
+def _first_line(text: str) -> str:
+    for line in str(text or "").splitlines():
+        if line.strip():
+            return line.strip()[:160]
+    return ""
+
+
+def _classify_baseline(root, item: Dict[str, Any], argv: List[str],
+                       tasks: List[Dict[str, Any]]) -> "tuple[str, str]":
+    from gatebound import jobs  # lazy: jobs pulls in workers and spec
+
+    found_verdict = item.get("verdict")
+    if found_verdict == verdict.OK:
+        return "already_passes", ALREADY_PASSES_NOTE
+    stderr = item.get("stderr_tail") or ""
+    if found_verdict == verdict.UNVERIFIED:
+        if stderr.startswith("could not execute:"):
+            program = str(argv[0]) if argv else ""
+            rel, owner = runcheck.program_owner(program, root, tasks)
+            if owner:
+                return "not_yet_runnable", "needs %s, which task %s writes" % (rel, owner)
+            dep = runcheck.dependency_program(program, root, tasks)
+            if dep and dep["owner"]:
+                return "not_yet_runnable", "needs %s, installed from %s, which task %s writes" % (
+                    dep["path"], dep["manifest"], dep["owner"])
+            if dep:
+                # As preflight's warn-and-start: dependencies not installed is
+                # not a broken command, and nothing was judged.
+                return "unverified", "cannot execute %s: dependencies not installed (%s, " \
+                    "which no task writes)" % (dep["path"], dep["manifest"])
+            return "command_error", "cannot execute %s and no task writes it" % (program or "argv")
+        return "unverified", item.get("detail") or _first_line(stderr) or "not verified"
+    gate = {"verdict": verdict.FAIL, "exit": item.get("exit"),
+            "stdout_tail": item.get("stdout_tail") or "", "stderr_tail": stderr}
+    kind = jobs.classify_gate_result(gate, argv, root=root, tasks=tasks)
+    found = runcheck.missing_path_owner(gate, root, tasks, argv=argv)
+    if kind == "not_yet_runnable":
+        return kind, "needs %s, which task %s writes" % (found["path"], found["owner"])
+    if kind == "command_error":
+        if found and not found["owner"]:
+            return kind, "needs %s and no task writes it" % found["path"]
+        return kind, "the command itself fails (exit %s): %s" % (
+            item.get("exit"), _first_line(stderr or item.get("stdout_tail")))
+    note = "exit %s" % item.get("exit")
+    if kind == "suspicious":
+        note += "; may be the command rather than the work"
+    return "fails", note
+
+
+def baseline(root: pathlib.Path, total_budget_s: Optional[float] = None) -> Dict[str, Any]:
+    """Run the fresh contract once and classify each criterion (ADR-0022).
+
+    Writes ``.gatebound/baseline.json`` and returns it. Never touches the Stop
+    gate's ``runs/contract-last.json``. Raises ``ValueError`` when there is no
+    fresh contract to run.
+    """
+    data = load(root)
+    if data is None:
+        raise ValueError("no contract: run `gatebound contract derive` first")
+    if status(root) != verdict.OK:
+        raise ValueError(STALE_REASON)
+    # ADR-0027: run before approval by /gatebound:gate, so the approval is not
+    # required here; the contract must still be what 05-gate.md derives.
+    refused = integrity(root, require_approval=False)
+    if refused is not None:
+        raise ValueError("%s: %s" % (refused["reasons"][0], "; ".join(refused.get("mismatch") or [])))
+    started = time.monotonic()
+    result = execute(root, total_budget_s=total_budget_s)
+    elapsed = round(time.monotonic() - started, 3)
+    argv_by_id = {c.get("id"): c.get("argv") or [] for c in data.get("criteria") or []}
+    tasks = _baseline_tasks(root)
+    rows = []
+    for item in result.get("criteria") or []:
+        cls, detail = _classify_baseline(root, item, argv_by_id.get(item["id"], []), tasks)
+        rows.append({"id": item["id"], "class": cls, "verdict": item.get("verdict"),
+                     "exit": item.get("exit"), "elapsed_s": item.get("elapsed_s"),
+                     "detail": detail})
+    record = {
+        "version": VERSION,
+        "recorded_at": _now(),
+        "source_sha256": data.get("source_sha256"),
+        "total_budget_s": result.get("total_budget_s"),
+        "elapsed_s": elapsed,
+        "criteria": rows,
+    }
+    config.write_json_atomic(paths.state_dir(root) / BASELINE_NAME, record)
+    return record
+
+
+def run(argv: List[str]) -> int:
+    """``gatebound contract derive|status|run|baseline [--json]``."""
+    parser = argparse.ArgumentParser(prog="gatebound contract", add_help=True)
+    parser.add_argument("action", choices=["derive", "status", "run", "baseline"])
+    parser.add_argument("--root", default=None)
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--budget", type=float, default=None,
+                        help="override the contract's declared total budget (seconds)")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code or 2)
+
+    root = paths.project_root(args.root)
+
+    if args.action == "derive":
+        try:
+            data = derive(root)
+        except (FileNotFoundError, ValueError) as err:
+            print(f"gatebound: {err}", file=sys.stderr)
+            return 1
+        if args.as_json:
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+        else:
+            print(f"derived {len(data['criteria'])} criteria -> {paths.contract_file(root)}")
+        return 0
+
+    if args.action == "status":
+        result = status(root)
+        changed = stale_inputs(root)
+        if changed:
+            # Naming the file saves the user from diffing three of them to find
+            # out why the gate they approved no longer applies.
+            print("%s (changed inputs: %s)" % (result, ", ".join(changed)))
+        else:
+            print(result)
+        return 0 if result == verdict.OK else 1
+
+    if args.action == "baseline":
+        try:
+            record = baseline(root, total_budget_s=args.budget)
+        except ValueError as err:
+            print(f"gatebound: {err}", file=sys.stderr)
+            return 1
+        if args.as_json:
+            print(json.dumps(record, indent=2, ensure_ascii=False))
+        else:
+            for row in record["criteria"]:
+                print(f"  {row['id']:<24} {row['class']:<17} {row['elapsed_s'] or 0:>7.1f}s  {row['detail']}")
+            print(f"baseline: {len(record['criteria'])} criteria in {record['elapsed_s']:.1f}s "
+                  f"(budget {record['total_budget_s']}s) -> .gatebound/{BASELINE_NAME}")
+        broken = any(r["class"] == "command_error" for r in record["criteria"])
+        return 4 if broken else 0
+
+    # ADR-0027: the approval and the contract are checked before any criterion.
+    result = integrity(root) or execute(root, total_budget_s=args.budget)
+    if result.get("criteria"):
+        # Recorded so the Stop gate ending this turn can reuse it (ADR-0020);
+        # this command itself never reuses anything.
+        try:
+            save_last(root, result)
+        except OSError:
+            pass
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(result["verdict"])
+        for reason in result["reasons"]:
+            print(f"  - {reason}")
+        for line in result.get("mismatch") or []:
+            print(f"    {line}")
+        if result.get("unapproved_grading"):
+            print("    " + ", ".join(result["unapproved_grading"]))
+    return 0 if result["verdict"] == verdict.OK else 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(run(sys.argv[1:]))

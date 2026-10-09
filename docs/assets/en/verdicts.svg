@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1362" viewBox="0 0 1440 1362" font-family="-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
+
+  <rect x="0" y="0" width="1440" height="1362" fill="#FBF9F5"/>
+
+  <!-- ===== Title ===== -->
+  <text x="72" y="72" font-size="34" font-weight="700" fill="#12312E">The four-state verdict vocabulary</text>
+  <text x="72" y="104" font-size="17" fill="#6B6459">Every check in gatebound returns one of these four. The JSON always carries the English token.</text>
+
+  <!-- ===== Four state cards ===== -->
+  <!-- ok -->
+  <g>
+    <rect x="72" y="152" width="300" height="176" rx="12" fill="#FFFFFF" stroke="#1E7A4C" stroke-width="2"/>
+    <rect x="72" y="152" width="300" height="8" rx="4" fill="#1E7A4C"/>
+    <circle cx="112" cy="200" r="16" fill="#E3F2E9"/>
+    <path d="M 105 200 L 110 206 L 120 194" stroke="#1E7A4C" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="142" y="208" font-size="24" font-weight="700" fill="#1E7A4C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ok</text>
+    <line x1="96" y1="230" x2="348" y2="230" stroke="#EDE7DC" stroke-width="1.5"/>
+    <text x="96" y="258" font-size="16" font-weight="600" fill="#12312E">Checked, and it holds</text>
+    <text x="96" y="290" font-size="13.5" fill="#6B6459">The criterion ran, the expected exit</text>
+    <text x="96" y="310" font-size="13.5" fill="#6B6459">code came back, declared artifacts exist.</text>
+  </g>
+
+  <!-- warn -->
+  <g>
+    <rect x="400" y="152" width="300" height="176" rx="12" fill="#FFFFFF" stroke="#B8860B" stroke-width="2"/>
+    <rect x="400" y="152" width="300" height="8" rx="4" fill="#B8860B"/>
+    <circle cx="440" cy="200" r="16" fill="#FBF1DA"/>
+    <path d="M 440 191 L 440 201" stroke="#8A6410" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="440" cy="208" r="1.8" fill="#8A6410"/>
+    <text x="470" y="208" font-size="24" font-weight="700" fill="#8A6410" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">warn</text>
+    <line x1="424" y1="230" x2="676" y2="230" stroke="#EDE7DC" stroke-width="1.5"/>
+    <text x="424" y="258" font-size="16" font-weight="600" fill="#12312E">Checked, and it works</text>
+    <text x="424" y="290" font-size="13.5" fill="#6B6459">It passed, but there is something to know.</text>
+    <text x="424" y="310" font-size="13.5" fill="#6B6459">It does not block progress.</text>
+  </g>
+
+  <!-- fail -->
+  <g>
+    <rect x="728" y="152" width="300" height="176" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="2"/>
+    <rect x="728" y="152" width="300" height="8" rx="4" fill="#B3382C"/>
+    <circle cx="768" cy="200" r="16" fill="#F8E7E4"/>
+    <path d="M 762 194 L 774 206 M 774 194 L 762 206" stroke="#B3382C" stroke-width="3" stroke-linecap="round"/>
+    <text x="798" y="208" font-size="24" font-weight="700" fill="#B3382C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">fail</text>
+    <line x1="752" y1="230" x2="1004" y2="230" stroke="#EDE7DC" stroke-width="1.5"/>
+    <text x="752" y="258" font-size="16" font-weight="600" fill="#12312E">Checked, and it is broken</text>
+    <text x="752" y="290" font-size="13.5" fill="#6B6459">The criterion ran and the result is wrong.</text>
+    <text x="752" y="310" font-size="13.5" fill="#6B6459">A missing declared artifact is fail too.</text>
+  </g>
+
+  <!-- unverified -->
+  <g>
+    <rect x="1056" y="152" width="312" height="176" rx="12" fill="#F1F3F5" stroke="#4A5764" stroke-width="2.5"/>
+    <rect x="1056" y="152" width="312" height="8" rx="4" fill="#4A5764"/>
+    <circle cx="1096" cy="200" r="16" fill="#FFFFFF" stroke="#4A5764" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="1096" y="207" font-size="17" font-weight="700" fill="#4A5764" text-anchor="middle">?</text>
+    <text x="1126" y="208" font-size="24" font-weight="700" fill="#2F3A45" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">unverified</text>
+    <line x1="1080" y1="230" x2="1344" y2="230" stroke="#D5DAE0" stroke-width="1.5"/>
+    <text x="1080" y="258" font-size="16" font-weight="700" fill="#12312E">Not checked</text>
+    <text x="1080" y="290" font-size="13.5" fill="#5A6672">Stopped before a judgment, or ran</text>
+    <text x="1080" y="310" font-size="13.5" fill="#5A6672">but proved nothing. Causes below.</text>
+  </g>
+
+  <!-- ===== The core rule ===== -->
+  <rect x="72" y="364" width="1296" height="196" rx="14" fill="#0E5C55"/>
+  <text x="104" y="404" font-size="22" font-weight="700" fill="#FFFFFF">unverified is never rounded to a pass or a fail</text>
+
+  <!-- three-state (wrong) -->
+  <rect x="104" y="424" width="580" height="112" rx="10" fill="#0A4A44"/>
+  <text x="128" y="452" font-size="14" font-weight="700" fill="#8FBDB6" letter-spacing="1">With three states</text>
+
+  <rect x="128" y="466" width="128" height="34" rx="6" fill="#123F3A" stroke="#2F6B64" stroke-width="1.2"/>
+  <text x="192" y="488" font-size="13" fill="#9FCCC4" text-anchor="middle">Could not check</text>
+
+  <path d="M 260 483 L 282 470 M 260 483 L 282 496" stroke="#5E938C" stroke-width="2" fill="none"/>
+  <path d="M 282 470 L 272 470 L 278 477 Z" fill="#5E938C"/>
+  <path d="M 282 496 L 272 496 L 278 489 Z" fill="#5E938C"/>
+
+  <rect x="292" y="452" width="176" height="30" rx="6" fill="#123F3A" stroke="#2F6B64" stroke-width="1.2"/>
+  <text x="380" y="472" font-size="13" fill="#9FCCC4" text-anchor="middle">Rounded to pass</text>
+  <rect x="292" y="490" width="176" height="30" rx="6" fill="#123F3A" stroke="#2F6B64" stroke-width="1.2"/>
+  <text x="380" y="510" font-size="13" fill="#9FCCC4" text-anchor="middle">Rounded to fail</text>
+
+  <text x="484" y="465" font-size="12" fill="#7FB0A9">A test that timed out</text>
+  <text x="484" y="481" font-size="12" fill="#7FB0A9">is reported as passing</text>
+  <text x="484" y="504" font-size="12" fill="#7FB0A9">A check that cannot run yet</text>
+  <text x="484" y="520" font-size="12" fill="#7FB0A9">becomes a defect; trust erodes</text>
+
+  <!-- four-state (right) -->
+  <rect x="716" y="424" width="620" height="112" rx="10" fill="#FFFFFF"/>
+  <text x="744" y="452" font-size="14" font-weight="700" fill="#0E5C55" letter-spacing="1">gatebound's four states</text>
+
+  <rect x="744" y="466" width="128" height="34" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.4"/>
+  <text x="808" y="488" font-size="13" fill="#2F3A45" text-anchor="middle">Could not check</text>
+
+  <path d="M 880 483 L 912 483" stroke="#4A5764" stroke-width="2"/>
+  <path d="M 912 483 L 904 478 L 904 488 Z" fill="#4A5764"/>
+
+  <rect x="920" y="464" width="180" height="38" rx="6" fill="#4A5764"/>
+  <text x="1010" y="488" font-size="14.5" font-weight="700" fill="#FFFFFF" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">unverified</text>
+
+  <text x="744" y="522" font-size="12.5" fill="#4A443B">The fourth state removes that rounding. Without it, one timeout reports unverified code as "done".</text>
+
+  <!-- ===== Where unverified comes from ===== -->
+  <text x="72" y="616" font-size="20" fill="#12312E" font-weight="700">Where unverified comes from</text>
+  <text x="72" y="642" font-size="14.5" fill="#6B6459">Two routes: one criterion ends with no evidence, or the contract cannot be trusted, so no criterion runs at all.</text>
+  <rect x="72" y="664" width="640" height="390" rx="12" fill="#FFFFFF" stroke="#4A5764" stroke-width="1.8"/>
+  <rect x="72" y="664" width="640" height="8" rx="4" fill="#4A5764"/>
+  <text x="96" y="700" font-size="16" fill="#12312E" font-weight="700">One criterion is unverified</text>
+  <text x="96" y="722" font-size="13" fill="#6B6459">It ended without evidence: it did not run, or proved nothing</text>
+  <line x1="96" y1="740" x2="688" y2="740" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="96" y="750" width="252" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="108" y="769" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">timeout after Ns</text>
+  <text x="364" y="761" font-size="14" fill="#12312E" font-weight="700">Timeout</text>
+  <text x="364" y="780" font-size="12.5" fill="#5A6672">The criterion did not finish within timeout_s</text>
+  <line x1="96" y1="790" x2="688" y2="790" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="96" y="800" width="252" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="108" y="819" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">budget exhausted</text>
+  <text x="364" y="811" font-size="14" fill="#12312E" font-weight="700">Exhausted budget</text>
+  <text x="364" y="830" font-size="12.5" fill="#5A6672">Total budget (45 s default, 600 s max) ran out</text>
+  <line x1="96" y1="840" x2="688" y2="840" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="96" y="850" width="252" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="108" y="869" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">could not execute</text>
+  <text x="364" y="861" font-size="14" fill="#12312E" font-weight="700">Could not run</text>
+  <text x="364" y="880" font-size="12.5" fill="#5A6672">Missing program, no permission, bad argv</text>
+  <line x1="96" y1="890" x2="688" y2="890" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="96" y="900" width="252" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="108" y="919" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ran no tests · all tests skipped</text>
+  <text x="364" y="911" font-size="14" fill="#12312E" font-weight="700">Zero tests, or all skipped (ADR-0022)</text>
+  <text x="364" y="930" font-size="12.5" fill="#5A6672">The runner succeeded, but no test passed</text>
+  <line x1="96" y1="940" x2="688" y2="940" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="96" y="950" width="252" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="108" y="969" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">could not start the runner</text>
+  <text x="364" y="961" font-size="14" fill="#12312E" font-weight="700">Runner could not start (ADR-0031)</text>
+  <text x="364" y="980" font-size="12.5" fill="#5A6672">A web server or similar did not start; code not judged</text>
+  <line x1="96" y1="990" x2="688" y2="990" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="96" y="1000" width="252" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="108" y="1019" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">grading file changed</text>
+  <text x="364" y="1011" font-size="14" fill="#12312E" font-weight="700">Grading file changed (ADR-0023)</text>
+  <text x="364" y="1030" font-size="12.5" fill="#5A6672">ok is held back even if it passed; re-approve or revert</text>
+  <rect x="728" y="664" width="640" height="390" rx="12" fill="#FFFFFF" stroke="#4A5764" stroke-width="1.8"/>
+  <rect x="728" y="664" width="640" height="8" rx="4" fill="#4A5764"/>
+  <text x="752" y="700" font-size="16" fill="#12312E" font-weight="700">The whole run is unverified before any criterion</text>
+  <text x="752" y="722" font-size="13" fill="#6B6459">The contract cannot be trusted, so nothing runs</text>
+  <line x1="752" y1="740" x2="1344" y2="740" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="752" y="750" width="216" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="764" y="769" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">contract_stale</text>
+  <text x="984" y="761" font-size="14" fill="#12312E" font-weight="700">Stale contract</text>
+  <text x="984" y="780" font-size="12.5" fill="#5A6672">05-gate.md or a design input changed after derive</text>
+  <line x1="752" y1="790" x2="1344" y2="790" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="752" y="800" width="216" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="764" y="819" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">gate_not_approved</text>
+  <text x="984" y="811" font-size="14" fill="#12312E" font-weight="700">Gate not approved (ADR-0027)</text>
+  <text x="984" y="830" font-size="12.5" fill="#5A6672">05-gate.md has no approval, or changed since</text>
+  <line x1="752" y1="840" x2="1344" y2="840" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="752" y="850" width="216" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="764" y="869" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">grading_unapproved</text>
+  <text x="984" y="861" font-size="14" fill="#12312E" font-weight="700">Grading not re-approved (ADR-0023)</text>
+  <text x="984" y="880" font-size="12.5" fill="#5A6672">Re-derived over a changed grading file</text>
+  <line x1="752" y1="890" x2="1344" y2="890" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="752" y="900" width="216" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="764" y="919" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">contract_mismatch</text>
+  <text x="984" y="911" font-size="14" fill="#12312E" font-weight="700">Contract mismatch (ADR-0027)</text>
+  <text x="984" y="930" font-size="12.5" fill="#5A6672">contract.json differs from 05-gate.md</text>
+  <line x1="752" y1="940" x2="1344" y2="940" stroke="#EDE7DC" stroke-width="1.2"/>
+  <rect x="752" y="950" width="216" height="28" rx="6" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.2"/>
+  <text x="764" y="969" font-size="12" fill="#2F3A45" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">contract_busy</text>
+  <text x="984" y="961" font-size="14" fill="#12312E" font-weight="700">Another run holds the lock (ADR-0031)</text>
+  <text x="984" y="980" font-size="12.5" fill="#5A6672">Another contract run held it for over 30 s</text>
+
+  <!-- ===== Aggregation ===== -->
+  <text x="72" y="1102" font-size="20" fill="#12312E" font-weight="700">Aggregation — the most severe verdict wins</text>
+  <rect x="72" y="1122" width="640" height="204" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+  <rect x="96" y="1142" width="76" height="34" rx="6" fill="#B3382C"/>
+  <text x="134" y="1165" font-size="15" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">fail</text>
+  <text x="186" y="1166" font-size="18" fill="#6B6459" font-weight="700" text-anchor="middle">&gt;</text>
+  <rect x="200" y="1142" width="132" height="34" rx="6" fill="#4A5764"/>
+  <text x="266" y="1165" font-size="15" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">unverified</text>
+  <text x="346" y="1166" font-size="18" fill="#6B6459" font-weight="700" text-anchor="middle">&gt;</text>
+  <rect x="360" y="1142" width="76" height="34" rx="6" fill="#8A6410"/>
+  <text x="398" y="1165" font-size="15" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">warn</text>
+  <text x="450" y="1166" font-size="18" fill="#6B6459" font-weight="700" text-anchor="middle">&gt;</text>
+  <rect x="464" y="1142" width="60" height="34" rx="6" fill="#1E7A4C"/>
+  <text x="494" y="1165" font-size="15" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ok</text>
+  <text x="96" y="1208" font-size="13.5" fill="#4A443B">Any fail → fail; otherwise any unverified → unverified;</text>
+  <text x="96" y="1230" font-size="13.5" fill="#4A443B">otherwise any warn → warn; else ok.</text>
+  <line x1="96" y1="1246" x2="688" y2="1246" stroke="#EDE7DC" stroke-width="1.2"/>
+  <text x="96" y="1268" font-size="13" fill="#2F3A45">· If no criterion was judged at all, the total is unverified, not ok.</text>
+  <text x="96" y="1292" font-size="13" fill="#2F3A45">· If every criterion that ran is ok but the Stop budget deferred</text>
+  <text x="108" y="1312" font-size="13" fill="#2F3A45">others, the total is unverified (deferred_by_stop_budget, ADR-0024).</text>
+  <rect x="728" y="1122" width="640" height="204" rx="12" fill="#F1F3F5" stroke="#4A5764" stroke-width="1.8"/>
+  <text x="752" y="1154" font-size="16" fill="#12312E" font-weight="700">Real case — Quicknote stage 6, verify</text>
+  <text x="752" y="1178" font-size="13" fill="#3E4A56">An independent evaluator ran 8 criteria.</text>
+  <rect x="752" y="1194" width="34" height="26" rx="4" fill="#1E7A4C"/>
+  <rect x="790" y="1194" width="34" height="26" rx="4" fill="#1E7A4C"/>
+  <rect x="828" y="1194" width="34" height="26" rx="4" fill="#1E7A4C"/>
+  <rect x="866" y="1194" width="34" height="26" rx="4" fill="#1E7A4C"/>
+  <rect x="904" y="1194" width="34" height="26" rx="4" fill="#1E7A4C"/>
+  <rect x="942" y="1194" width="34" height="26" rx="4" fill="#1E7A4C"/>
+  <rect x="980" y="1194" width="34" height="26" rx="4" fill="#4A5764"/>
+  <rect x="1018" y="1194" width="34" height="26" rx="4" fill="#4A5764"/>
+  <path d="M 1064 1207 L 1090 1207" stroke="#9AA4AE" stroke-width="2.5"/>
+  <path d="M 1098 1207 L 1088 1201 L 1088 1213 Z" fill="#9AA4AE"/>
+  <rect x="1106" y="1190" width="140" height="34" rx="6" fill="#4A5764"/>
+  <text x="1176" y="1212" font-size="15" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">unverified</text>
+  <text x="752" y="1244" font-size="12.5" fill="#2F3A45">6 × ok · 2 × unverified (timeout)</text>
+  <text x="752" y="1276" font-size="13" fill="#3E4A56">Not an implementation defect: budgets 5 s / 10 s &lt; measured 6.6 s / 24.5 s.</text>
+  <text x="752" y="1300" font-size="13" fill="#2F3A45" font-weight="700">Declared gatebound-budget 180 s from the measured 49 s, re-approved → 8/8 ok.</text>
+
+</svg>

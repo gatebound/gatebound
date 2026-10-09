@@ -1,0 +1,59 @@
+name: fresh-clone-smoke
+
+# Does a fresh `git clone` of the public repository actually work on this OS?
+# Unlike ci.yml, which runs the unit suite on a checkout, this clones the
+# published `main` the way a user would, sets up examples/memo-board under a
+# Korean folder name with a space, and drives the CLI, every hook through
+# Git Bash exactly as hooks.json invokes it, the real Playwright contract, a
+# host-mode build and the Codex layer install. See tools/smoke_fresh_clone.py.
+#
+# Manual dispatch, plus pushes to its own branch while it is being developed:
+# it depends on npm and a browser download, which do not belong on every push.
+
+on:
+  push:
+    branches: [ci/fresh-clone-smoke]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "branch or tag of gatebound/gatebound to clone and test"
+        default: "main"
+        required: true
+
+jobs:
+  smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"  # examples/memo-board needs node --test glob expansion (README: Node 22+)
+
+      - name: interpreters on this runner
+        shell: bash
+        run: |
+          for p in python3 python py; do
+            if command -v "$p" >/dev/null 2>&1; then echo "$p: $("$p" --version 2>&1)"; else echo "$p: absent"; fi
+          done
+
+      - name: fresh clone smoke
+        shell: bash
+        run: |
+          python tools/smoke_fresh_clone.py --ref "${{ inputs.ref || github.ref_name }}" --work "$RUNNER_TEMP/gk-smoke" --summary smoke-summary.md
+
+      - name: publish summary
+        if: always()
+        shell: bash
+        run: cat smoke-summary.md >> "$GITHUB_STEP_SUMMARY" || echo "no summary written" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-summary-${{ matrix.os }}
+          path: smoke-summary.md
+          if-no-files-found: ignore

@@ -1,0 +1,266 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1716" viewBox="0 0 1440 1716" font-family="-apple-system, BlinkMacSystemFont, &quot;Apple SD Gothic Neo&quot;, &quot;Noto Sans KR&quot;, &quot;Malgun Gothic&quot;, sans-serif">
+
+  <rect x="0" y="0" width="1440" height="1716" fill="#FBF9F5"/>
+  <!-- ===== Title ===== -->
+  <text x="72" y="72" font-size="34" font-weight="700" fill="#12312E">훅 게이트 9개</text>
+  <text x="72" y="104" font-size="17" fill="#6B6459">Claude Code 세션의 다섯 이벤트에 걸리는 게이트 스크립트</text>
+  <rect x="1084" y="46" width="284" height="66" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+  <rect x="1106" y="66" width="14" height="14" rx="3" fill="#B3382C"/>
+  <text x="1130" y="78" font-size="14" fill="#4A443B">차단한다</text>
+  <rect x="1226" y="66" width="14" height="14" rx="3" fill="#8C8577"/>
+  <text x="1250" y="78" font-size="14" fill="#4A443B">차단하지 않는다</text>
+  <text x="1106" y="100" font-size="13" fill="#8C8577">plugin/hooks/hooks.json 에 등록된다</text>
+  <!-- ===== Session timeline rail ===== -->
+  <text x="72" y="150" font-size="13" fill="#8C8577" letter-spacing="1">세션 타임라인</text>
+  <line x1="96" y1="196" x2="1344" y2="196" stroke="#C9C1B2" stroke-width="3"/>
+  <path d="M 1344 196 L 1332 189 L 1332 203 Z" fill="#C9C1B2"/>
+  <circle cx="170" cy="196" r="9" fill="#8C8577"/>
+  <text x="170" y="178" font-size="13" fill="#8C8577" text-anchor="middle">프롬프트를 보낼 때</text>
+  <text x="170" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">UserPromptSubmit</text>
+  <text x="170" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#8C8577">prompt</tspan></text>
+  <circle cx="520" cy="196" r="9" fill="#B3382C"/>
+  <text x="520" y="178" font-size="13" fill="#8C8577" text-anchor="middle">도구 호출 직전</text>
+  <text x="520" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="520" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#B3382C">write</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#B3382C">bash</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#B3382C">powershell</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#B3382C">spawn</tspan><tspan dx="7" fill="#C9C1B2">·</tspan><tspan dx="7" fill="#8C8577">skill</tspan></text>
+  <circle cx="850" cy="196" r="9" fill="#8C8577"/>
+  <text x="850" y="178" font-size="13" fill="#8C8577" text-anchor="middle">도구 호출 직후</text>
+  <text x="850" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PostToolUse</text>
+  <text x="850" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#8C8577">question</tspan></text>
+  <circle cx="1070" cy="196" r="9" fill="#8C8577"/>
+  <text x="1070" y="178" font-size="13" fill="#8C8577" text-anchor="middle">대화 압축 직전</text>
+  <text x="1070" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreCompact</text>
+  <text x="1070" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#8C8577">compact</tspan></text>
+  <circle cx="1270" cy="196" r="9" fill="#B3382C"/>
+  <text x="1270" y="178" font-size="13" fill="#8C8577" text-anchor="middle">턴이 끝날 때</text>
+  <text x="1270" y="228" font-size="13" fill="#0E5C55" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Stop</text>
+  <text x="1270" y="252" font-size="15" font-weight="700" text-anchor="middle"><tspan fill="#B3382C">stop</tspan></text>
+  <text x="685" y="178" font-size="12.5" fill="#B5AD9F" text-anchor="middle">도구 실행</text>
+  <text x="72" y="288" font-size="13" fill="#8C8577" letter-spacing="1">차단하는 게이트 — 거부는 PreToolUse 의 deny, Stop 의 block</text>
+  <!-- ===== write ===== -->
+  <g>
+  <rect x="72" y="300" width="400" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="72" y="300" width="400" height="6" rx="3" fill="#B3382C"/>
+  <text x="96" y="338" font-size="20" font-weight="700" fill="#12312E">write</text>
+  <rect x="380" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="415.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">차단한다</text>
+  <text x="96" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="96" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Write|Edit|MultiEdit|NotebookEdit|apply_patch</text>
+  <line x1="96" y1="397" x2="448" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="96" y="421" font-size="13.5" fill="#2E2A24">막는 것 — 규칙 셋, 각각 단독으로 거부한다</text>
+  <text x="96" y="447" font-size="13" font-weight="700" fill="#2E2A24">(c) 보호 상태 · 언제나, 가장 먼저 (ADR-0027)</text>
+  <text x="96" y="467" font-size="13" fill="#6B6459">.gatebound/ 아래는 gatebound 만 쓴다.</text>
+  <text x="96" y="487" font-size="13" fill="#6B6459">예외는 config.json 과 eval/** 뿐.</text>
+  <text x="96" y="507" font-size="13" fill="#6B6459">승인 전후 · 어느 세션에서든 거부. 링크도 따라간다.</text>
+  <text x="96" y="537" font-size="13" font-weight="700" fill="#2E2A24">(a) 스펙 먼저 · enforce_spec_before_code</text>
+  <text x="96" y="557" font-size="13" fill="#6B6459">spec/ 에 gatebound 스펙 파일이 있고 05-gate.md</text>
+  <text x="96" y="577" font-size="13" fill="#6B6459">승인이 ok 가 아니면 허용 목록 밖 쓰기를 거부.</text>
+  <text x="96" y="597" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/**  docs/**  README*  루트 *.md</text>
+  <text x="96" y="627" font-size="13" font-weight="700" fill="#2E2A24">(b) 태스크 쓰기 범위 · GATEBOUND_TASK_ID</text>
+  <text x="96" y="647" font-size="13" fill="#6B6459">워커는 task.json 의 write_scope 안만 쓴다.</text>
+  <text x="96" y="667" font-size="13" fill="#6B6459">문서 허용 목록 없음. 범위를 못 읽으면 거부.</text>
+  </g>
+  <!-- ===== bash ===== -->
+  <g>
+  <rect x="492" y="300" width="262" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="492" y="300" width="262" height="6" rx="3" fill="#B3382C"/>
+  <text x="516" y="338" font-size="20" font-weight="700" fill="#12312E">bash</text>
+  <rect x="662" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="697.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">차단한다</text>
+  <text x="516" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="516" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Bash</text>
+  <line x1="516" y1="397" x2="730" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="516" y="421" font-size="13.5" fill="#2E2A24">막는 것 — 셸 명령의 쓰기</text>
+  <text x="516" y="447" font-size="13" fill="#6B6459">명령을 실행하지 않고 읽어</text>
+  <text x="516" y="467" font-size="13" fill="#6B6459">쓰기 대상을 뽑는다.</text>
+  <text x="516" y="487" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">&gt;  tee  sed -i  cp  mv  rm …</text>
+  <text x="516" y="507" font-size="13" fill="#6B6459">경로마다 write 게이트와</text>
+  <text x="516" y="527" font-size="13" fill="#6B6459">같은 함수로 판정한다.</text>
+  <text x="516" y="557" font-size="13" font-weight="700" fill="#2E2A24">규칙 (c) 는 언제나 본다.</text>
+  <text x="516" y="577" font-size="13" fill="#6B6459">규칙 (a)·(b) 가 살아 있으면</text>
+  <text x="516" y="597" font-size="13" fill="#6B6459">판별 불가 명령도 거부한다.</text>
+  <text x="516" y="617" font-size="13" fill="#6B6459">워커 안의 approve 는 거부.</text>
+  </g>
+  <!-- ===== powershell ===== -->
+  <g>
+  <rect x="774" y="300" width="262" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="774" y="300" width="262" height="6" rx="3" fill="#B3382C"/>
+  <text x="798" y="338" font-size="20" font-weight="700" fill="#12312E">powershell</text>
+  <rect x="944" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="979.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">차단한다</text>
+  <text x="798" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="798" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PowerShell</text>
+  <line x1="798" y1="397" x2="1012" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="798" y="421" font-size="13.5" fill="#2E2A24">막는 것 — PowerShell 의 쓰기</text>
+  <text x="798" y="447" font-size="13" fill="#6B6459">PowerShell 문법으로 읽는다.</text>
+  <text x="798" y="467" font-size="13" fill="#6B6459">cmdlet · 별칭 · 리다이렉션</text>
+  <text x="798" y="497" font-size="13" fill="#6B6459">bash 게이트와 같은 판정을</text>
+  <text x="798" y="517" font-size="13" fill="#6B6459">같은 순서로 적용한다.</text>
+  <text x="798" y="537" font-size="13" fill="#6B6459">워커 approve 거부 → 규칙 (c)</text>
+  <text x="798" y="557" font-size="13" fill="#6B6459">→ (a)·(b) · 판별 불가 거부</text>
+  <text x="798" y="587" font-size="13" fill="#6B6459">Windows 경로는 write 게이트와</text>
+  <text x="798" y="607" font-size="13" fill="#6B6459">같은 함수로 정규화한다.</text>
+  </g>
+  <!-- ===== spawn ===== -->
+  <g>
+  <rect x="1056" y="300" width="312" height="380" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="1056" y="300" width="312" height="6" rx="3" fill="#B3382C"/>
+  <text x="1080" y="338" font-size="20" font-weight="700" fill="#12312E">spawn</text>
+  <rect x="1276" y="322" width="70" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="1311.0" y="338" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">차단한다</text>
+  <text x="1080" y="364" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="1080" y="383" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Agent|Task|collaborationspawn_agent</text>
+  <line x1="1080" y1="397" x2="1344" y2="397" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="1080" y="421" font-size="13.5" fill="#2E2A24">막는 것 — 범위 없는 서브에이전트</text>
+  <text x="1080" y="447" font-size="13" fill="#6B6459">프롬프트에 gatebound-scope 펜스가</text>
+  <text x="1080" y="467" font-size="13" fill="#6B6459">있어야 하고 JSON 으로 파싱한다.</text>
+  <text x="1080" y="487" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">{"write_scope": […], "stop_when": …}</text>
+  <text x="1080" y="517" font-size="13" fill="#6B6459">펜스가 없거나, JSON 이 아니거나,</text>
+  <text x="1080" y="537" font-size="13" fill="#6B6459">필드 규칙을 어기거나, 이 세션의</text>
+  <text x="1080" y="557" font-size="13" fill="#6B6459">활성 범위와 겹치면 거부한다.</text>
+  <text x="1080" y="587" font-size="13" fill="#6B6459">Codex 의 collaborationspawn_agent 는</text>
+  <text x="1080" y="607" font-size="13" fill="#6B6459">프롬프트가 안 보여 허용하고</text>
+  <text x="1080" y="627" font-size="13" fill="#6B6459">spawn_unscoped 로 기록한다.</text>
+  </g>
+  <!-- ===== stop ===== -->
+  <rect x="72" y="704" width="1296" height="372" rx="12" fill="#FFFFFF" stroke="#B3382C" stroke-width="1.8"/>
+  <rect x="72" y="704" width="1296" height="6" rx="3" fill="#B3382C"/>
+  <text x="96" y="742" font-size="20" font-weight="700" fill="#12312E">stop</text>
+  <text x="152" y="742" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Stop</text>
+  <text x="196" y="742" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">timeout 600</text>
+  <rect x="1196" y="726" width="150" height="22" rx="11" fill="#F8E7E4"/>
+  <text x="1271.0" y="742" font-size="12.5" font-weight="700" fill="#B3382C" text-anchor="middle">차단한다 · 최대 3회</text>
+  <text x="96" y="774" font-size="14" fill="#2E2A24">막는 것 — 계약 미통과 상태의 턴 끝. fail 이나 unverified 기준이 하나라도 있으면 막는다.</text>
+  <text x="96" y="796" font-size="13" fill="#6B6459">.gatebound/contract.json 이 있고 active_pipeline 이 build · verify 일 때만 계약을 실행한다. 그 밖에는 허용하고 unverified 를 기록한다. stop_hook_active 면 막지 않는다.</text>
+  <line x1="96" y1="812" x2="1344" y2="812" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="96" y="844" font-size="16" font-weight="700" fill="#12312E">3회 차단 상한</text>
+  <rect x="96" y="862" width="88" height="42" rx="8" fill="#F8E7E4" stroke="#E0A79E" stroke-width="1.2"/>
+  <text x="140.0" y="880" font-size="12" fill="#B3382C" text-anchor="middle">1회 차단</text>
+  <text x="140.0" y="897" font-size="12" fill="#8A3A30" text-anchor="middle">기준 안내</text>
+  <path d="M 188 883 L 200 883" stroke="#C9C1B2" stroke-width="2"/>
+  <path d="M 200 883 L 192 878 L 192 888 Z" fill="#C9C1B2"/>
+  <rect x="202" y="862" width="88" height="42" rx="8" fill="#F8E7E4" stroke="#E0A79E" stroke-width="1.2"/>
+  <text x="246.0" y="880" font-size="12" fill="#B3382C" text-anchor="middle">2회 차단</text>
+  <text x="246.0" y="897" font-size="12" fill="#8A3A30" text-anchor="middle">기준 안내</text>
+  <path d="M 294 883 L 306 883" stroke="#C9C1B2" stroke-width="2"/>
+  <path d="M 306 883 L 298 878 L 298 888 Z" fill="#C9C1B2"/>
+  <rect x="308" y="862" width="88" height="42" rx="8" fill="#F8E7E4" stroke="#E0A79E" stroke-width="1.2"/>
+  <text x="352.0" y="880" font-size="12" fill="#B3382C" text-anchor="middle">3회 차단</text>
+  <text x="352.0" y="897" font-size="12" fill="#8A3A30" text-anchor="middle">기준 안내</text>
+  <path d="M 400 883 L 412 883" stroke="#C9C1B2" stroke-width="2"/>
+  <path d="M 412 883 L 404 878 L 404 888 Z" fill="#C9C1B2"/>
+  <rect x="414" y="862" width="100" height="42" rx="8" fill="#EFEBE2" stroke="#C9C1B2" stroke-width="1.2"/>
+  <text x="464" y="888" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">물러남</text>
+  <text x="96" y="932" font-size="13.5" fill="#4A443B">block_count 가 3에 이르면 종료를 허용한다.</text>
+  <text x="96" y="953" font-size="13.5" fill="#4A443B">만족시킬 수 없는 게이트가 사용자를</text>
+  <text x="96" y="974" font-size="13.5" fill="#4A443B">인질로 잡으면 안 되기 때문이다.</text>
+  <text x="96" y="999" font-size="13.5" font-weight="700" fill="#B3382C">물러나도 stop.final_verdict 를 기록한다.</text>
+  <text x="96" y="1020" font-size="13.5" font-weight="700" fill="#B3382C">그 값은 절대 공란이 아니다.</text>
+  <line x1="536" y1="832" x2="536" y2="1054" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="560" y="844" font-size="16" font-weight="700" fill="#12312E">기준 등급과 예산 (ADR-0024)</text>
+  <text x="560" y="874" font-size="13.5" fill="#4A443B">build 에서는 "tier": "turn" 기준만 실행한다.</text>
+  <text x="560" y="895" font-size="13.5" fill="#4A443B">verify 등급은 /gatebound:verify 로 미룬다.</text>
+  <text x="560" y="916" font-size="13.5" fill="#4A443B"></text>
+  <text x="560" y="937" font-size="12.5" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">stop.budget_s  기본 120 s · 상한 570 s</text>
+  <text x="560" y="958" font-size="13.5" fill="#4A443B">예산이 지나면 새 기준을 시작하지 않는다.</text>
+  <text x="560" y="979" font-size="13.5" fill="#4A443B">미룬 기준은 차단 사유가 아니지만 ok 도 아니다:</text>
+  <text x="560" y="1000" font-size="13.5" fill="#4A443B">unverified 로 기록, 다음 턴 끝에 먼저 실행.</text>
+  <text x="560" y="1021" font-size="13.5" fill="#4A443B"></text>
+  <text x="560" y="1042" font-size="13.5" font-weight="700" fill="#2E2A24">verify 에서는 등급 · 예산 없이 전부 실행한다.</text>
+  <line x1="976" y1="832" x2="976" y2="1054" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="1000" y="844" font-size="16" font-weight="700" fill="#12312E">물러나기 (ADR-0024)</text>
+  <text x="1000" y="874" font-size="13.5" fill="#4A443B">끝난 잡에 판정이 기록되면 물러난다:</text>
+  <text x="1000" y="895" font-size="13.5" fill="#4A443B">인계 점검 ok, 또는 3회 차단 뒤 final_verdict.</text>
+  <text x="1000" y="916" font-size="13.5" fill="#4A443B">이후 턴 끝은 아무것도 실행하지 않고 허용.</text>
+  <text x="1000" y="937" font-size="12.5" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">stop.stood_down</text>
+  <text x="1000" y="958" font-size="13.5" fill="#4A443B"></text>
+  <text x="1000" y="979" font-size="13.5" font-weight="700" fill="#2E2A24">다시 판정하는 경우:</text>
+  <text x="1000" y="1000" font-size="13.5" fill="#4A443B">/gatebound:build · /gatebound:verify 재호출,</text>
+  <text x="1000" y="1021" font-size="13.5" fill="#4A443B">새 잡 시작, 태스크 재위임.</text>
+  <text x="1000" y="1042" font-size="13.5" fill="#4A443B">jobs stop 으로 멈춘 태스크는 fail 로 기록, 차단 없음.</text>
+  <text x="72" y="1116" font-size="13" fill="#8C8577" letter-spacing="1">차단하지 않는 게이트 — 기록하고 허용한다</text>
+  <!-- ===== prompt ===== -->
+  <g>
+  <rect x="72" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="72" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="96" y="1166" font-size="20" font-weight="700" fill="#12312E">prompt</text>
+  <rect x="259" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="309.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">차단 안 함</text>
+  <text x="96" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">UserPromptSubmit</text>
+  <line x1="96" y1="1206" x2="357" y2="1206" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="96" y="1230" font-size="13.5" fill="#2E2A24">하는 일 — 원장과 컨텍스트</text>
+  <text x="96" y="1256" font-size="13" fill="#6B6459">세션 원장을 만들고 output_lang 을</text>
+  <text x="96" y="1276" font-size="13" fill="#6B6459">감지한다. /gatebound:&lt;파이프라인&gt; 이면</text>
+  <text x="96" y="1296" font-size="13" fill="#6B6459">active_pipeline 을 기록한다.</text>
+  <text x="96" y="1316" font-size="13" fill="#6B6459">600자 이내 컨텍스트 블록을 주입한다.</text>
+  </g>
+  <!-- ===== skill ===== -->
+  <g>
+  <rect x="401" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="401" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="425" y="1166" font-size="20" font-weight="700" fill="#12312E">skill</text>
+  <rect x="588" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="638.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">차단 안 함</text>
+  <text x="425" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse</text>
+  <text x="425" y="1211" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Skill</text>
+  <line x1="425" y1="1225" x2="686" y2="1225" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="425" y="1249" font-size="13.5" fill="#2E2A24">하는 일 — Stop 게이트 무장 (ADR-0032)</text>
+  <text x="425" y="1275" font-size="13" fill="#6B6459">gatebound 의 build · verify 스킬이면</text>
+  <text x="425" y="1295" font-size="13" fill="#6B6459">active_pipeline 을 기록하고 Stop</text>
+  <text x="425" y="1315" font-size="13" fill="#6B6459">게이트를 다시 무장한다. 다른 스킬은</text>
+  <text x="425" y="1335" font-size="13" fill="#6B6459">파이프라인을 건드리지 않는다.</text>
+  </g>
+  <!-- ===== question ===== -->
+  <g>
+  <rect x="730" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="730" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="754" y="1166" font-size="20" font-weight="700" fill="#12312E">question</text>
+  <rect x="917" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="967.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">차단 안 함</text>
+  <text x="754" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PostToolUse</text>
+  <text x="754" y="1211" font-size="12" fill="#4A443B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">AskUserQuestion | Write…</text>
+  <line x1="754" y1="1225" x2="1015" y2="1225" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="754" y="1249" font-size="13.5" fill="#2E2A24">하는 일 — 질문 수를 센다</text>
+  <text x="754" y="1275" font-size="13" fill="#6B6459">interview 만 예산이 있다(기본 2회).</text>
+  <text x="754" y="1295" font-size="13" fill="#6B6459">넘으면 budget_exceeded 를 기록한다.</text>
+  <text x="754" y="1315" font-size="13" fill="#6B6459">Write 계열 호출은 쓰기로만 적는다.</text>
+  <text x="754" y="1335" font-size="13" fill="#6B6459">PostToolUse 에는 차단 채널이 없다.</text>
+  </g>
+  <!-- ===== compact ===== -->
+  <g>
+  <rect x="1059" y="1128" width="309" height="236" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <rect x="1059" y="1128" width="309" height="6" rx="3" fill="#8C8577"/>
+  <text x="1083" y="1166" font-size="20" font-weight="700" fill="#12312E">compact</text>
+  <rect x="1246" y="1150" width="100" height="22" rx="11" fill="#EFEBE2"/>
+  <text x="1296.0" y="1166" font-size="12.5" font-weight="700" fill="#6B6459" text-anchor="middle">차단 안 함</text>
+  <text x="1083" y="1192" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreCompact</text>
+  <line x1="1083" y1="1206" x2="1344" y2="1206" stroke="#EDE7DC" stroke-width="1.5"/>
+  <text x="1083" y="1230" font-size="13.5" fill="#2E2A24">하는 일 — 빌드 상태를 파일에</text>
+  <text x="1083" y="1256" font-size="13" fill="#6B6459">진행 중인 빌드가 있으면 잡 · 태스크</text>
+  <text x="1083" y="1276" font-size="13" fill="#6B6459">상태를 spec/PROGRESS.md 의 자기</text>
+  <text x="1083" y="1296" font-size="13" fill="#6B6459">구간에 찍는다(ADR-0013). 빌드가</text>
+  <text x="1083" y="1316" font-size="13" fill="#6B6459">없으면 아무것도 하지 않는다.</text>
+  </g>
+  <!-- ===== exit 0 rule ===== -->
+  <rect x="72" y="1392" width="640" height="196" rx="12" fill="#0E5C55"/>
+  <text x="100" y="1428" font-size="18" font-weight="700" fill="#FFFFFF">모든 훅은 언제나 exit 0 이다</text>
+  <text x="100" y="1458" font-size="14" fill="#BFDCD6">차단은 종료 코드가 아니라 stdout 의 JSON 으로 표현된다.</text>
+  <rect x="100" y="1474" width="270" height="34" rx="6" fill="#0A4A44"/>
+  <text x="116" y="1496" font-size="13" fill="#9FCCC4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PreToolUse → deny</text>
+  <rect x="386" y="1474" width="270" height="34" rx="6" fill="#0A4A44"/>
+  <text x="402" y="1496" font-size="13" fill="#9FCCC4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Stop → block</text>
+  <text x="100" y="1536" font-size="13.5" fill="#DDEBE8">예외는 .gatebound/runs/hook-errors.log 에 한 줄로 남는다.</text>
+  <text x="100" y="1560" font-size="13.5" fill="#DDEBE8">고장 난 훅은 "허용하고 로그를 남긴다"로 격하되지, 세션을 죽이지 않는다.</text>
+  <!-- ===== projects without .gatebound/ ===== -->
+  <rect x="732" y="1392" width="636" height="196" rx="12" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.8"/>
+  <text x="760" y="1428" font-size="18" font-weight="700" fill="#12312E">.gatebound/ 가 없는 프로젝트</text>
+  <text x="760" y="1458" font-size="14" fill="#4A443B">플러그인은 전역 설치라 훅은 모든 프로젝트에서 돈다.</text>
+  <text x="760" y="1488" font-size="13.5" fill="#4A443B">prompt · skill · spawn · question · stop 은 상태를 만들지 않고 허용한다.</text>
+  <text x="760" y="1512" font-size="13.5" fill="#4A443B">compact 는 진행 중인 빌드가 없으니 아무것도 하지 않는다.</text>
+  <text x="760" y="1536" font-size="13.5" fill="#4A443B">write · bash · powershell 의 규칙 (a) 는 gatebound 스펙 파일이 있을 때만,</text>
+  <text x="760" y="1560" font-size="13.5" fill="#4A443B">규칙 (b) 는 워커 안에서만 걸린다. 규칙 (c) 는 어디서나 언제나.</text>
+  <!-- ===== Perf note ===== -->
+  <rect x="72" y="1612" width="1296" height="60" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+  <text x="100" y="1638" font-size="15" font-weight="700" fill="#12312E">성능 요구</text>
+  <text x="100" y="1660" font-size="13.5" fill="#4A443B">각 게이트는 보통 프로젝트에서 5초 안에 끝난다(훅 timeout 10초). Stop 훅만 timeout 600초이고, 게이트는 계약 실행을 570초에서 자른다.</text>
+
+</svg>

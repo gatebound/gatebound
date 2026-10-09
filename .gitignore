@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.gatebound/runs/
+.gatebound/jobs/
+.DS_Store
+.review/
+dist/
+# gatebound run against this repo itself: local trial artifacts, never the
+# product. They carry absolute paths, which is why gate_no_abs_paths flags
+# them locally and CI (a fresh clone) stays clean.
+/spec/
+/tetris/
+# generated Codex host layer (gatebound install --host codex); regenerate, do not commit
+.codex/
+.agents/

@@ -1,0 +1,218 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1330" viewBox="0 0 1440 1330" font-family="-apple-system, BlinkMacSystemFont, &quot;Apple SD Gothic Neo&quot;, &quot;Noto Sans KR&quot;, &quot;Malgun Gothic&quot;, sans-serif">
+<rect x="0" y="0" width="1440" height="1330" fill="#FBF9F5"/>
+<text x="72" y="72" font-size="34" fill="#12312E" font-weight="700">gatebound 파이프라인</text>
+<text x="72" y="104" font-size="17" fill="#6B6459">뭘 만들지 모르는 상태에서 검증된 완료까지 — 0~6단계</text>
+<rect x="1054" y="40" width="314" height="122" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="1054" y="40" width="4" height="122" rx="2" fill="#8C8577"/>
+<text x="1078" y="68" font-size="14" fill="#6B6459" font-weight="700" letter-spacing="1.2">파이프라인 밖</text>
+<text x="1078" y="98" font-size="16" fill="#12312E" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:doctor</text>
+<text x="1250" y="98" font-size="13" fill="#6B6459">아무 때나</text>
+<text x="1078" y="126" font-size="16" fill="#12312E" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:setup</text>
+<text x="1250" y="126" font-size="13" fill="#6B6459">프로젝트 최초 1회</text>
+<text x="1078" y="150" font-size="13" fill="#8C8577">설치·상태 8축 진단 / config·워커 점검</text>
+<path d="M 372 340 L 402 340" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 404 340 L 396 335 L 396 345 Z" fill="#0E5C55"/>
+<path d="M 704 340 L 734 340" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 736 340 L 728 335 L 728 345 Z" fill="#0E5C55"/>
+<path d="M 1036 340 L 1066 340" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 1068 340 L 1060 335 L 1060 345 Z" fill="#0E5C55"/>
+<rect x="72" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2" stroke-dasharray="7 5"/>
+<rect x="72" y="190" width="300" height="42" rx="12" fill="#4E8C84"/>
+<rect x="72" y="220" width="300" height="12" fill="#4E8C84"/>
+<circle cx="98" cy="211" r="13" fill="#FFFFFF"/>
+<text x="98" y="216" font-size="13" fill="#4E8C84" font-weight="700" text-anchor="middle">0</text>
+<text x="120" y="217" font-size="17" fill="#FFFFFF" font-weight="700">discover</text>
+<rect x="321.0" y="200" width="39.0" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.26" stroke="#FFFFFF" stroke-width="1.1"/>
+<text x="340.5" y="216" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">선택</text>
+<text x="92" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:discover</text>
+<line x1="92" y1="272" x2="352" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="92" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="92" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/00-discovery.md</text>
+<text x="92" y="342" font-size="12.5" fill="#8C8577">자유 대화로 불편 → 개선과제</text>
+<line x1="92" y1="406" x2="352" y2="406" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="92" y="428" font-size="12" fill="#8C8577" letter-spacing="0.8">게이트</text>
+<circle cx="98" cy="448" r="4" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="110" y="452" font-size="12.5" fill="#4A443B">확정 verdict가 eliminate·reuse면</text>
+<text x="110" y="472" font-size="12.5" fill="#4A443B">interview 진행 차단</text>
+<rect x="404" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="404" y="190" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="404" y="220" width="300" height="12" fill="#0E5C55"/>
+<circle cx="430" cy="211" r="13" fill="#FFFFFF"/>
+<text x="430" y="216" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">1</text>
+<text x="452" y="217" font-size="17" fill="#FFFFFF" font-weight="700">interview</text>
+<text x="424" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:interview</text>
+<line x1="424" y1="272" x2="684" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="424" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="424" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/01-prd.md</text>
+<text x="424" y="336" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/03-architecture.md</text>
+<text x="424" y="362" font-size="12.5" fill="#8C8577">자유 대화 + 도메인 리서치</text>
+<text x="424" y="382" font-size="12.5" fill="#8C8577">기능을 제안하고 사용자가 쳐낸다</text>
+<line x1="424" y1="406" x2="684" y2="406" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="424" y="428" font-size="12" fill="#8C8577" letter-spacing="0.8">게이트</text>
+<circle cx="430" cy="448" r="4.5" fill="#0E5C55"/>
+<text x="442" y="452" font-size="12.5" fill="#4A443B">question 훅: 질문 예산 2회</text>
+<text x="442" y="472" font-size="12.5" fill="#4A443B">넘으면 기록만, 막지는 않는다</text>
+<rect x="736" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="736" y="190" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="736" y="220" width="300" height="12" fill="#0E5C55"/>
+<circle cx="762" cy="211" r="13" fill="#FFFFFF"/>
+<text x="762" y="216" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">2</text>
+<text x="784" y="217" font-size="17" fill="#FFFFFF" font-weight="700">mockup</text>
+<rect x="947.5" y="200" width="76.5" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.26" stroke="#FFFFFF" stroke-width="1.1"/>
+<text x="985.8" y="216" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">UI 필수</text>
+<text x="756" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:mockup</text>
+<line x1="756" y1="272" x2="1016" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="756" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="756" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/02-screens.md</text>
+<text x="756" y="336" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/tokens.json</text>
+<text x="756" y="356" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/design/prototype-*.html</text>
+<rect x="752" y="370" width="268" height="50" rx="6" fill="#FBF1DA" stroke="#D9AE4A" stroke-width="1.2"/>
+<text x="886" y="391" font-size="13.5" fill="#8A6410" font-weight="700" text-anchor="middle">★ 사용자가 프로토타입을 확정</text>
+<text x="886" y="410" font-size="12" fill="#8A6410" text-anchor="middle">Prototype confirmed &lt;날짜&gt; 줄</text>
+<text x="756" y="446" font-size="12" fill="#8C8577" letter-spacing="0.8">규칙</text>
+<text x="756" y="470" font-size="12.5" fill="#4A443B">[non-ui] PRD면 건너뛴다</text>
+<rect x="1068" y="190" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="1068" y="190" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="1068" y="220" width="300" height="12" fill="#0E5C55"/>
+<circle cx="1094" cy="211" r="13" fill="#FFFFFF"/>
+<text x="1094" y="216" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">3</text>
+<text x="1116" y="217" font-size="17" fill="#FFFFFF" font-weight="700">tasks</text>
+<text x="1088" y="258" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:tasks</text>
+<line x1="1088" y1="272" x2="1348" y2="272" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="1088" y="294" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="1088" y="316" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/04-tasks.md</text>
+<text x="1088" y="342" font-size="12.5" fill="#8C8577">gatebound-task 펜스로 작업 분해</text>
+<text x="1088" y="362" font-size="12.5" fill="#8C8577">작업마다 게이트 ≥ 1, write_scope 비중첩</text>
+<text x="1088" y="382" font-size="12.5" fill="#8C8577">tokens 게이트·스크린샷 기준 기본 추가</text>
+<line x1="1088" y1="406" x2="1348" y2="406" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="1088" y="428" font-size="12" fill="#8C8577" letter-spacing="0.8">게이트</text>
+<circle cx="1094" cy="448" r="4" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="1106" y="452" font-size="12.5" fill="#4A443B">02-screens.md 없음 또는 확정 줄 없음</text>
+<text x="1106" y="472" font-size="12.5" fill="#4A443B">→ 실행 거부 (UI 프로젝트)</text>
+<line x1="886" y1="490" x2="886" y2="514" stroke="#4E8C84" stroke-width="2" stroke-dasharray="5 4"/>
+<rect x="404" y="514" width="964" height="92" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2" stroke-dasharray="7 5"/>
+<rect x="404" y="514" width="250" height="92" rx="12" fill="#4E8C84"/>
+<rect x="642" y="514" width="12" height="92" fill="#4E8C84"/>
+<circle cx="430" cy="540" r="13" fill="#FFFFFF"/>
+<text x="430" y="544" font-size="11.5" fill="#4E8C84" font-weight="700" text-anchor="middle">2b</text>
+<text x="452" y="546" font-size="17" fill="#FFFFFF" font-weight="700">design</text>
+<rect x="599.0" y="529" width="39.0" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.26" stroke="#FFFFFF" stroke-width="1.1"/>
+<text x="618.5" y="545" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">선택</text>
+<text x="424" y="584" font-size="13" fill="#FFFFFF" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:design</text>
+<text x="678" y="540" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="678" y="564" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/02-design.md</text>
+<text x="678" y="584" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/tokens.json</text>
+<text x="818" y="584" font-size="12" fill="#8C8577">(mockup과 공유)</text>
+<text x="984" y="540" font-size="12" fill="#8C8577">Figma · 스크린샷 · HTML · 라이브 사이트 · 프리셋 · 패턴 파일</text>
+<text x="984" y="564" font-size="13" fill="#4A443B">아무 단계에서나 재진입 — mockup 전·함께·build 중</text>
+<text x="984" y="586" font-size="13" fill="#4A443B">build 중에는 04·05를 고치지 않고 영향받는 작업만 보고</text>
+<rect x="72" y="628" width="1296" height="56" rx="8" fill="#F3EEE4" stroke="#DCD5C8" stroke-width="1.5"/>
+<text x="96" y="651" font-size="14.5" fill="#6B6459" font-weight="700">쓰기 게이트 — 닫힘</text>
+<text x="286" y="651" font-size="13" fill="#8C8577">spec/ 이 생기고 05-gate.md 승인 전</text>
+<text x="96" y="672" font-size="13" fill="#8C8577">소스 파일 수정 거부. spec/** · docs/** · README* · 루트 *.md 만 쓸 수 있다.  .gatebound/ 는 gatebound만 쓴다 (config.json 제외)</text>
+<path d="M 1368 340 L 1404 340 L 1404 708 L 222 708 L 222 734" stroke="#0E5C55" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+<path d="M 222 736 L 217 728 L 227 728 Z" fill="#0E5C55"/>
+<path d="M 372 886 L 402 886" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 404 886 L 396 881 L 396 891 Z" fill="#0E5C55"/>
+<path d="M 704 886 L 734 886" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 736 886 L 728 881 L 728 891 Z" fill="#0E5C55"/>
+<rect x="72" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#B8860B" stroke-width="2.5"/>
+<rect x="72" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#B8860B" stroke-width="2.5"/>
+<rect x="72" y="736" width="300" height="42" rx="12" fill="#8A6410"/>
+<rect x="72" y="766" width="300" height="12" fill="#8A6410"/>
+<circle cx="98" cy="757" r="13" fill="#FFFFFF"/>
+<text x="98" y="762" font-size="13" fill="#8A6410" font-weight="700" text-anchor="middle">4</text>
+<text x="120" y="763" font-size="17" fill="#FFFFFF" font-weight="700">gate</text>
+<text x="92" y="804" font-size="13" fill="#8A6410" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:gate</text>
+<rect x="92" y="818" width="260" height="32" rx="6" fill="#FBF1DA" stroke="#D9AE4A" stroke-width="1.2"/>
+<text x="222" y="839" font-size="14" fill="#8A6410" font-weight="700" text-anchor="middle">★ 사람이 승인한다</text>
+<text x="92" y="876" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="92" y="898" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/05-gate.md</text>
+<text x="92" y="918" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.gatebound/contract.json</text>
+<text x="92" y="938" font-size="13" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.gatebound/approvals.json</text>
+<line x1="92" y1="952" x2="352" y2="952" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="92" y="974" font-size="12" fill="#8C8577" letter-spacing="0.8">규칙</text>
+<text x="92" y="998" font-size="12.5" fill="#4A443B">승인 = 05-gate.md 해시 고정</text>
+<text x="92" y="1018" font-size="12.5" fill="#4A443B">고치면 승인 만료 → 다시 승인</text>
+<rect x="404" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="404" y="736" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="404" y="766" width="300" height="12" fill="#0E5C55"/>
+<circle cx="430" cy="757" r="13" fill="#FFFFFF"/>
+<text x="430" y="762" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">5</text>
+<text x="452" y="763" font-size="17" fill="#FFFFFF" font-weight="700">build</text>
+<text x="424" y="804" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:build</text>
+<rect x="420" y="814" width="268" height="74" rx="6" fill="#E4F0EC" stroke="#9FCCC4" stroke-width="1.2"/>
+<text x="432" y="832" font-size="12" fill="#0E5C55" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">build.execution</text>
+<text x="432" y="851" font-size="12.5" fill="#12312E" font-weight="600">host (기본) — 이 세션이 구현</text>
+<text x="444" y="866" font-size="12" fill="#3A5F59">jobs complete 가 게이트 실행</text>
+<text x="432" y="882" font-size="12.5" fill="#3A5F59">worker — 태스크마다 워커 스폰</text>
+<text x="424" y="906" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="424" y="925" font-size="12.5" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.gatebound/jobs/&lt;job_id&gt;/</text>
+<text x="424" y="943" font-size="12.5" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">spec/PROGRESS.md</text>
+<line x1="424" y1="952" x2="684" y2="952" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="424" y="974" font-size="12" fill="#8C8577" letter-spacing="0.8">게이트</text>
+<circle cx="430" cy="994" r="4.5" fill="#0E5C55"/>
+<text x="442" y="998" font-size="12.5" fill="#4A443B">write 훅: 워커는 write_scope 안만</text>
+<circle cx="430" cy="1014" r="4.5" fill="#0E5C55"/>
+<text x="442" y="1018" font-size="12.5" fill="#4A443B">Stop 훅: turn 기준을 실행</text>
+<rect x="736" y="736" width="300" height="300" rx="12" fill="#FFFFFF" stroke="#0E5C55" stroke-width="2"/>
+<rect x="736" y="736" width="300" height="42" rx="12" fill="#0E5C55"/>
+<rect x="736" y="766" width="300" height="12" fill="#0E5C55"/>
+<circle cx="762" cy="757" r="13" fill="#FFFFFF"/>
+<text x="762" y="762" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle">6</text>
+<text x="784" y="763" font-size="17" fill="#FFFFFF" font-weight="700">verify</text>
+<text x="756" y="804" font-size="13" fill="#0E5C55" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/gatebound:verify</text>
+<text x="756" y="828" font-size="12.5" fill="#0E5C55" font-weight="600">독립 평가자 (읽기 전용)</text>
+<line x1="756" y1="840" x2="1016" y2="840" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="756" y="862" font-size="12" fill="#8C8577" letter-spacing="0.8">산출물</text>
+<text x="756" y="884" font-size="13" fill="#2E2A24">기준별 판정</text>
+<text x="756" y="902" font-size="12" fill="#2E2A24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ok / warn / fail / unverified</text>
+<text x="756" y="924" font-size="13" fill="#2E2A24">-visual 판정 (스크린샷 기준)</text>
+<text x="756" y="944" font-size="13" fill="#2E2A24">PROGRESS.md 마지막 검증</text>
+<line x1="756" y1="952" x2="1016" y2="952" stroke="#EDE7DC" stroke-width="1.5"/>
+<text x="756" y="974" font-size="12" fill="#8C8577" letter-spacing="0.8">게이트</text>
+<circle cx="762" cy="994" r="4.5" fill="#0E5C55"/>
+<text x="774" y="998" font-size="12.5" fill="#4A443B">spawn 훅: 평가자 범위 검사</text>
+<text x="756" y="1020" font-size="12.5" fill="#B3382C" font-weight="600">-visual fail이면 집계 ok여도 미완료</text>
+<path d="M 1036 886 L 1066 886" stroke="#0E5C55" stroke-width="2.5" fill="none"/><path d="M 1068 886 L 1060 881 L 1060 891 Z" fill="#0E5C55"/>
+<rect x="1068" y="736" width="300" height="300" rx="10" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<rect x="1068" y="736" width="4" height="300" rx="2" fill="#0E5C55"/>
+<circle cx="1098" cy="768" r="4.5" fill="#0E5C55"/>
+<text x="1112" y="772" font-size="15" fill="#12312E" font-weight="700">Stop 게이트가 계약을 실행</text>
+<text x="1092" y="808" font-size="13" fill="#4A443B">build·verify 중 세션을 끝내려 하면</text>
+<text x="1092" y="832" font-size="13" fill="#4A443B">완료 계약을 실행한다.</text>
+<text x="1092" y="866" font-size="13" fill="#4A443B">fail·unverified가 있으면</text>
+<text x="1092" y="890" font-size="13" fill="#4A443B">종료를 막는다 (최대 3회).</text>
+<text x="1092" y="924" font-size="13" fill="#4A443B">build 중엔 turn 기준만 돌고,</text>
+<text x="1092" y="948" font-size="13" fill="#4A443B">verify 기준은 /gatebound:verify 가 판정.</text>
+<rect x="1088" y="984" width="260" height="34" rx="6" fill="#E4F0EC" stroke="#9FCCC4" stroke-width="1.2"/>
+<text x="1218" y="1006" font-size="13" fill="#0E5C55" font-weight="700" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">build passed ≠ contract ok</text>
+<line x1="222" y1="1036" x2="222" y2="1064" stroke="#B8860B" stroke-width="2.5" stroke-dasharray="6 4"/>
+<path d="M 222 1070 L 217 1060 L 227 1060 Z" fill="#B8860B"/>
+<rect x="82" y="1070" width="280" height="40" rx="20" fill="#FBF1DA" stroke="#D9AE4A" stroke-width="1.5"/>
+<text x="222" y="1095" font-size="14.5" fill="#8A6410" font-weight="700" text-anchor="middle">승인이 쓰기 게이트를 연다</text>
+<path d="M 362 1090 L 402 1090" stroke="#B8860B" stroke-width="2.5" fill="none"/><path d="M 404 1090 L 396 1085 L 396 1095 Z" fill="#B8860B"/>
+<rect x="404" y="1062" width="964" height="56" rx="8" fill="#E4F0EC" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="428" y="1085" font-size="14.5" fill="#0E5C55" font-weight="700">쓰기 게이트 — 열림</text>
+<text x="428" y="1106" font-size="13" fill="#3A5F59">host 세션은 소스를 쓸 수 있다.  워커 세션(GATEBOUND_TASK_ID)은 자기 write_scope 안에서만 (규칙 b, 더 엄격)</text>
+<rect x="72" y="1150" width="416" height="140" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="72" y="1150" width="4" height="140" rx="2" fill="#0E5C55"/>
+<text x="96" y="1180" font-size="15" fill="#12312E" font-weight="700">되돌아가는 경로</text>
+<text x="96" y="1208" font-size="13" fill="#4A443B">05-gate.md 를 고치면 승인·계약이 stale → 다시 승인.</text>
+<text x="96" y="1230" font-size="13" fill="#4A443B">02-screens · 02-design · tokens.json 이 계약 뒤에</text>
+<text x="96" y="1252" font-size="13" fill="#4A443B">바뀌면 contract status 가 fail(stale).</text>
+<text x="96" y="1274" font-size="13" fill="#4A443B">verify 가 ok 가 아니면 /gatebound:build 로 되돌린다.</text>
+<rect x="512" y="1150" width="416" height="140" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="512" y="1150" width="4" height="140" rx="2" fill="#B3382C"/>
+<text x="536" y="1180" font-size="15" fill="#12312E" font-weight="700">실패가 반복되면</text>
+<text x="536" y="1208" font-size="13" fill="#4A443B">max_retries(기본 2)를 넘기거나 같은 실패가</text>
+<text x="536" y="1230" font-size="13" fill="#4A443B">2회 연속이면 jobs 가 그 태스크를 거부한다.</text>
+<text x="536" y="1252" font-size="13" fill="#4A443B">spec/RECOVERY.md 에 진단을 쓰고 정지한다.</text>
+<text x="536" y="1274" font-size="13" fill="#4A443B">원인을 고친 뒤 --force-retry 로 재개.</text>
+<rect x="952" y="1150" width="416" height="140" rx="10" fill="#FFFFFF" stroke="#DCD5C8" stroke-width="1.5"/>
+<rect x="952" y="1150" width="4" height="140" rx="2" fill="#8C8577"/>
+<text x="976" y="1180" font-size="15" fill="#12312E" font-weight="700">게이트 표기</text>
+<circle cx="982" cy="1204" r="4.5" fill="#0E5C55"/>
+<text x="996" y="1208" font-size="13" fill="#4A443B">훅 — hooks.json 이 코드로 막는다</text>
+<circle cx="982" cy="1226" r="4" fill="#FFFFFF" stroke="#0E5C55" stroke-width="1.8"/>
+<text x="996" y="1230" font-size="13" fill="#4A443B">spec validate — 커맨드가 실행, fail이면 멈춤</text>
+<text x="976" y="1252" font-size="13" fill="#8A6410" font-weight="700">★</text>
+<text x="996" y="1252" font-size="13" fill="#4A443B">사람이 확인·승인하는 지점</text>
+<rect x="975" y="1264" width="14" height="12" rx="3" fill="none" stroke="#0E5C55" stroke-width="1.5" stroke-dasharray="3 2"/>
+<text x="996" y="1274" font-size="13" fill="#4A443B">점선 테두리 = 선택 단계</text>
+</svg>

@@ -1,0 +1,849 @@
+"""Tests for gatebound.doctor — 8 axes, fault-injected one at a time.
+
+HOME is redirected to a temp directory in every test so axis 2 never reads the
+developer's real Claude install, and `unverified` is asserted as itself rather
+than rounded to ok or fail.
+"""
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import re
+import shutil
+import socket
+import stat
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+# Make the `gatebound` package importable however this suite is discovered:
+# `discover -s plugin/tests` loads tests as top-level modules and puts only
+# `plugin/tests` on sys.path, so `plugin/` has to be added explicitly.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tests._stubs import echo_stub_body, make_python_stub  # noqa: E402
+from gatebound import doctor, paths, verdict
+
+
+class DoctorTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        (self.root / ".gatebound").mkdir()
+
+        self._home = tempfile.TemporaryDirectory()
+        self.home = pathlib.Path(os.path.realpath(self._home.name))
+        self._old_home = os.environ.get("HOME")
+        os.environ["HOME"] = str(self.home)
+
+        self._old_path = os.environ.get("PATH", "")
+        self._bin = tempfile.TemporaryDirectory()
+        self.bindir = pathlib.Path(os.path.realpath(self._bin.name))
+        os.environ["PATH"] = str(self.bindir)
+
+    def tearDown(self) -> None:
+        if self._old_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = self._old_home
+        os.environ["PATH"] = self._old_path
+        self._bin.cleanup()
+        self._home.cleanup()
+        self._tmp.cleanup()
+
+    # -- helpers ---------------------------------------------------------
+
+    def install_manifest(self, contains_gatebound: bool = True, enabled=True, nested: bool = True,
+                         extra=None) -> None:
+        directory = self.home / ".claude" / "plugins"
+        directory.mkdir(parents=True, exist_ok=True)
+        table = {"gatebound@gatebound": {"version": "0.1.0"}} if contains_gatebound else {"other@x": {}}
+        if extra:
+            table.update(extra)
+        payload = {"version": 2, "plugins": table} if nested else table
+        (directory / "installed_plugins.json").write_text(json.dumps(payload), encoding="utf-8")
+        if enabled is not None:
+            settings = {"enabledPlugins": {"gatebound@gatebound": bool(enabled)}}
+            (self.home / ".claude" / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+
+    def stub_claude(self) -> None:
+        make_python_stub(self.bindir, "claude", echo_stub_body("claude 1.0.0"))
+
+    def axis(self, report: dict, n: int) -> dict:
+        return report["axes"][n - 1]
+
+
+# ------------------------------------------------------------------- shape
+
+
+class TestReportShape(DoctorTestCase):
+    def test_eight_axes_each_with_the_required_keys(self) -> None:
+        report = doctor.diagnose(self.root)
+        self.assertEqual(len(report["axes"]), 8)
+        for axis in report["axes"]:
+            for key in ("axis", "verdict", "detail", "fix"):
+                self.assertIn(key, axis)
+            self.assertIn(axis["verdict"], (verdict.OK, verdict.WARN,
+                                            verdict.FAIL, verdict.UNVERIFIED))
+
+    def test_overall_verdict_is_the_aggregate_of_the_axes(self) -> None:
+        report = doctor.diagnose(self.root)
+        self.assertEqual(report["verdict"],
+                         verdict.aggregate([a["verdict"] for a in report["axes"]]))
+
+    def test_unverified_axis_never_rounds_the_report_to_ok(self) -> None:
+        report = doctor.diagnose(self.root)  # no spec/, no contract, no install
+        if any(a["verdict"] == verdict.UNVERIFIED for a in report["axes"]):
+            self.assertNotEqual(report["verdict"], verdict.OK)
+
+
+# ------------------------------------------------------------------- axis 1
+
+
+class TestAxisPluginFiles(DoctorTestCase):
+    def test_real_checkout_has_every_gate_script_or_reports_which_is_missing(self) -> None:
+        result = doctor.axis_plugin_files(self.root)
+        if result["verdict"] == verdict.FAIL:
+            self.assertIn("missing", result["detail"])
+        else:
+            self.assertEqual(result["verdict"], verdict.OK)
+
+    def test_gate_scripts_match_every_script_hooks_json_registers(self) -> None:
+        """Axis 1 checks the scripts the hooks actually run. compact.py was
+        registered without joining this list, so a missing compact.py went
+        unreported; hooks.json is the source, the tuple must follow it."""
+        hooks = json.loads((pathlib.Path(doctor.__file__).resolve().parents[1]
+                            / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        registered = set()
+        for entries in hooks["hooks"].values():
+            for entry in entries:
+                for hook in entry["hooks"]:
+                    registered.update(re.findall(r"gates/(\w+\.py)", hook["command"]))
+        self.assertTrue(registered)
+        self.assertEqual(set(doctor.GATE_SCRIPTS), registered)
+
+    def test_missing_gate_script_fails_axis_1(self) -> None:
+        fake_plugin = self.root / "fakeplugin"
+        (fake_plugin / ".claude-plugin").mkdir(parents=True)
+        (fake_plugin / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+        (fake_plugin / "hooks").mkdir()
+        (fake_plugin / "hooks" / "hooks.json").write_text("{}", encoding="utf-8")
+        gates = fake_plugin / "gatebound" / "gates"
+        gates.mkdir(parents=True)
+        for name in doctor.GATE_SCRIPTS[:-1]:
+            (gates / name).write_text("# gate\n", encoding="utf-8")
+
+        original = paths.plugin_root
+        paths.plugin_root = lambda: fake_plugin
+        try:
+            result = doctor.axis_plugin_files(self.root)
+        finally:
+            paths.plugin_root = original
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn(doctor.GATE_SCRIPTS[-1], result["detail"])
+        self.assertTrue(result["fix"])
+
+    def test_empty_gate_script_fails_axis_1(self) -> None:
+        fake_plugin = self.root / "fakeplugin2"
+        (fake_plugin / ".claude-plugin").mkdir(parents=True)
+        (fake_plugin / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+        (fake_plugin / "hooks").mkdir()
+        (fake_plugin / "hooks" / "hooks.json").write_text("{}", encoding="utf-8")
+        gates = fake_plugin / "gatebound" / "gates"
+        gates.mkdir(parents=True)
+        for name in doctor.GATE_SCRIPTS:
+            (gates / name).write_text("" if name == "stop.py" else "# gate\n", encoding="utf-8")
+
+        original = paths.plugin_root
+        paths.plugin_root = lambda: fake_plugin
+        try:
+            result = doctor.axis_plugin_files(self.root)
+        finally:
+            paths.plugin_root = original
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("empty", result["detail"])
+
+
+# ------------------------------------------------------------------- axis 2
+
+
+class TestAxisHooksRegistered(DoctorTestCase):
+    def test_no_install_manifest_is_unverified_not_fail(self) -> None:
+        result = doctor.axis_hooks_registered(self.root)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+
+    def test_manifest_listing_gatebound_is_ok(self) -> None:
+        self.install_manifest(True)
+        self.assertEqual(doctor.axis_hooks_registered(self.root)["verdict"], verdict.OK)
+
+    def test_flat_legacy_manifest_is_ok(self) -> None:
+        self.install_manifest(True, nested=False)
+        self.assertEqual(doctor.axis_hooks_registered(self.root)["verdict"], verdict.OK)
+
+    def test_installed_but_disabled_fails(self) -> None:
+        self.install_manifest(True, enabled=False)
+        result = doctor.axis_hooks_registered(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("disabled", result["detail"])
+        self.assertIn("enable", result["fix"])
+
+    def seen(self, hook_root: str) -> None:
+        runs = self.root / ".gatebound" / "runs"
+        runs.mkdir(parents=True, exist_ok=True)
+        (runs / "s1.json").write_text(json.dumps({
+            "session_id": "s1", "hook_root": hook_root,
+            "hook_seen_at": "2026-10-04T09:00:00+00:00"}), encoding="utf-8")
+
+    def test_hooks_seen_running_from_this_plugin_are_ok(self) -> None:
+        # ADR-0032: a --plugin-dir session with the install disabled.
+        self.install_manifest(True, enabled=False)
+        self.seen(str(doctor.paths.plugin_root()))
+        result = doctor.axis_hooks_registered(self.root)
+        self.assertEqual(result["verdict"], verdict.OK)
+        self.assertIn("running from", result["detail"])
+
+    def test_hooks_seen_from_another_copy_are_not_evidence(self) -> None:
+        self.install_manifest(True, enabled=False)
+        self.seen(str(self.home / "some" / "other" / "plugin"))
+        self.assertEqual(doctor.axis_hooks_registered(self.root)["verdict"], verdict.FAIL)
+
+    def test_installed_without_enabled_entry_is_unverified(self) -> None:
+        self.install_manifest(True, enabled=None)
+        self.assertEqual(doctor.axis_hooks_registered(self.root)["verdict"], verdict.UNVERIFIED)
+
+    def test_substring_mention_in_other_plugin_is_not_installed(self) -> None:
+        self.install_manifest(False, extra={"other@x": {"description": "works with gatebound"}})
+        self.assertEqual(doctor.axis_hooks_registered(self.root)["verdict"], verdict.FAIL)
+
+    def test_manifest_without_gatebound_fails(self) -> None:
+        self.install_manifest(False)
+        result = doctor.axis_hooks_registered(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("install", result["fix"])
+
+    def test_unparseable_manifest_is_unverified(self) -> None:
+        directory = self.home / ".claude" / "plugins"
+        directory.mkdir(parents=True)
+        (directory / "installed_plugins.json").write_text("{not json", encoding="utf-8")
+        self.assertEqual(doctor.axis_hooks_registered(self.root)["verdict"], verdict.UNVERIFIED)
+
+    def test_missing_home_is_unverified(self) -> None:
+        os.environ.pop("HOME", None)
+        try:
+            result = doctor.axis_hooks_registered(self.root)
+        finally:
+            os.environ["HOME"] = str(self.home)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+
+
+# ------------------------------------------------------------------- axis 3
+
+
+class TestAxisProjectState(DoctorTestCase):
+    def test_clean_state_dir_is_ok(self) -> None:
+        self.assertEqual(doctor.axis_project_state(self.root)["verdict"], verdict.OK)
+
+    def test_no_state_dir_is_unverified(self) -> None:
+        shutil.rmtree(self.root / ".gatebound")
+        self.assertEqual(doctor.axis_project_state(self.root)["verdict"], verdict.UNVERIFIED)
+
+    def test_corrupt_config_json_fails(self) -> None:
+        (self.root / ".gatebound" / "config.json").write_text("{oops", encoding="utf-8")
+        result = doctor.axis_project_state(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("config.json", result["detail"])
+
+    def test_approvals_without_a_list_fails(self) -> None:
+        (self.root / ".gatebound" / "approvals.json").write_text('{"version": 1}', encoding="utf-8")
+        result = doctor.axis_project_state(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("approvals.json", result["detail"])
+
+
+class TestAxisProjectStatePortProbe(DoctorTestCase):
+    """ADR-0026: a server already on the Playwright webServer port.
+
+    Rehearsal of 0.16.0: another project's server held the port and, with
+    `reuseExistingServer: true`, the e2e tests ran against the wrong app."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(16)
+        self.port = self.listener.getsockname()[1]
+
+    def tearDown(self) -> None:
+        self.listener.close()
+        super().tearDown()
+
+    def write_config(self, port: int, where: str = "playwright.config.ts",
+                     key: str = "port") -> None:
+        target = self.root / where
+        target.parent.mkdir(parents=True, exist_ok=True)
+        value = (str(port) if key == "port"
+                 else '"http://localhost:%d/"' % port)
+        target.write_text(
+            'import { defineConfig } from "@playwright/test";\n'
+            "export default defineConfig({\n"
+            '  use: { baseURL: "http://localhost:%d" },\n'
+            "  webServer: {\n"
+            '    command: "node server.js",\n'
+            "    %s: %s,\n"
+            "    reuseExistingServer: true,\n"
+            "  },\n"
+            "});\n" % (port, key, value),
+            encoding="utf-8")
+
+    def free_port(self) -> int:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        return port
+
+    def test_ports_read_from_webserver_port_and_url(self) -> None:
+        self.write_config(4183)
+        self.write_config(5173, where="spec/design/e2e/playwright.config.mjs", key="url")
+        self.assertEqual(doctor.webserver_ports(self.root), [4183, 5173])
+
+    def ports_of(self, text: str) -> list:
+        (self.root / "playwright.config.ts").write_text(text, encoding="utf-8")
+        return doctor.webserver_ports(self.root)
+
+    def test_commented_ports_are_ignored(self) -> None:
+        # Review of 0.16.1: ports in comments were reported.
+        self.assertEqual(self.ports_of(
+            "webServer: {\n  // port: 4000 was the old one\n  /* url: 'http://localhost:4100' */\n"
+            "  command: 'x', url: 'http://localhost:3000' }\n"), [3000])
+
+    def test_ports_after_the_webserver_block_are_ignored(self) -> None:
+        self.assertEqual(self.ports_of(
+            "export default defineConfig({\n  webServer: { command: 'x', port: 3000 },\n"
+            "  use: { baseURL: 'http://localhost:3001' },\n"
+            "  projects: [{ name: 'api', use: { port: 9229 } }],\n});\n"), [3000])
+
+    def test_env_fallback_port(self) -> None:
+        self.assertEqual(self.ports_of(
+            "webServer: { command: 'npm run dev', port: Number(process.env.PORT) || 3000 }"),
+            [3000])
+        self.assertEqual(self.ports_of(
+            "webServer: { command: 'x', url: process.env.BASE_URL || 'http://127.0.0.1:4173' }"),
+            [4173])
+
+    def test_webserver_array(self) -> None:
+        self.assertEqual(self.ports_of(
+            "webServer: [{ command: 'a', port: 3000 },\n"
+            "  { command: 'b', url: 'http://127.0.0.1:8080/health' }],\n"
+            "use: { port: 1234 }\n"), [3000, 8080])
+
+    def test_braces_inside_strings_do_not_end_the_block(self) -> None:
+        self.assertEqual(self.ports_of(
+            "webServer: { command: 'node -e \"x}\" // not a comment', port: 3000 },\n"
+            "other: { port: 9999 }\n"), [3000])
+
+    def test_ternary_webserver_value(self) -> None:
+        # Review of 0.16.2: a value that does not open with `{` was skipped.
+        self.assertEqual(self.ports_of(
+            "export default { webServer: process.env.CI ? undefined : "
+            "{ command: 'x', port: 3100 } }"), [3100])
+        self.assertEqual(self.ports_of(
+            "export default defineConfig({\n  webServer: process.env.CI\n"
+            "    ? undefined\n    : { command: 'x', port: 3101 },\n"
+            "  use: { port: 9229 },\n});\n"), [3101])
+
+    def test_webserver_declared_as_a_variable(self) -> None:
+        self.assertEqual(self.ports_of(
+            "const webServer = { command: 'x', port: 3200 };\n"
+            "export default defineConfig({ webServer });\n"), [3200])
+
+    def test_typed_webserver_declaration(self) -> None:
+        # Review of 0.16.3: the type annotation was read as the value.
+        self.assertEqual(self.ports_of(
+            "const webServer: PlaywrightTestConfig['webServer'] = { command: 'x', port: 3800 };\n"
+            "export default defineConfig({ webServer });\n"), [3800])
+        self.assertEqual(self.ports_of(
+            "const webServer: { command: string; port: number }[] = "
+            "[{ command: 'x', port: 3801 }];\n"), [3801])
+        self.assertEqual(self.ports_of(
+            "let webServer: {\n  command: string;\n  port: number;\n}[] = [\n"
+            "  { command: 'x', port: 3802 },\n];\n"), [3802])
+        self.assertEqual(self.ports_of(
+            "const webServer: Array<{ port: number; make: () => void }> = "
+            "[{ port: 3803 }];\n"), [3803])
+        self.assertEqual(self.ports_of(
+            "const webServer: Config = { command: 'x', port: 3804 }\n"), [3804])
+
+    def test_quote_in_a_regex_literal_does_not_hide_the_port(self) -> None:
+        # Review of 0.16.4: an unterminated '...' or "..." ran to EOF and
+        # blanked the `webServer` key after it.
+        self.assertEqual(self.ports_of(
+            "const r = /'/g;\nexport default { webServer: { port: 3810 } }\n"), [3810])
+        self.assertEqual(self.ports_of(
+            'const r = /"/;\nexport default { webServer: { port: 3811 } }\n'), [3811])
+        self.assertEqual(self.ports_of(
+            "const r = /it's/;\nexport default { webServer: { port: 3812 } }\n"), [3812])
+        # A template literal still spans lines.
+        self.assertEqual(self.ports_of(
+            "const t = `a\nwebServer: { port: 9243 }\n`;\n"), [])
+
+    def test_wrapped_type_annotation(self) -> None:
+        # Review of 0.16.4: a Prettier-wrapped annotation ended at its first
+        # line break.
+        self.assertEqual(self.ports_of(
+            "const webServer:\n  | A\n  | B = { command: 'x', port: 3820 };\n"), [3820])
+        self.assertEqual(self.ports_of(
+            "const webServer: Config\n  = { command: 'x', port: 3821 };\n"), [3821])
+        self.assertEqual(self.ports_of(
+            "const webServer: A &\n  B = { port: 3822 };\n"), [3822])
+        self.assertEqual(self.ports_of(
+            "let webServer: number\nif (a > b) { const c = { port: 9244 } }\n"), [])
+
+    def test_typed_declaration_without_a_value_reads_nothing_after_it(self) -> None:
+        self.assertEqual(self.ports_of(
+            "let webServer: Config;\nconst other = { port: 9240 };\n"), [])
+        self.assertEqual(self.ports_of(
+            "let webServer: Config, other = { port: 9241 };\n"), [])
+
+    def test_quoted_webserver_key(self) -> None:
+        # Review of 0.16.3: a quoted key was not recognised.
+        self.assertEqual(self.ports_of(
+            "export default { 'webServer': { command: 'x', port: 3700 } }"), [3700])
+        self.assertEqual(self.ports_of(
+            'module.exports = { "webServer": { command: "x", port: 3701 } }'), [3701])
+        self.assertEqual(self.ports_of(
+            "export default { 'webServer\": { port: 9242 } }"), [])
+
+    def test_webserver_inside_a_string_is_not_a_key(self) -> None:
+        self.assertEqual(self.ports_of(
+            "console.log('webServer: { port: 9243 }')\nexport default {}\n"), [])
+        self.assertEqual(self.ports_of(
+            "const help = `set webServer = { port: 9244 }`;\n"
+            "export default { webServer: { port: 3702 } }\n"), [3702])
+
+    def test_value_without_an_object_reads_nothing_after_it(self) -> None:
+        self.assertEqual(self.ports_of(
+            "export default { webServer: makeServer, use: { port: 9229 } }"), [])
+        self.assertEqual(self.ports_of(
+            "const webServer = makeServer()\n"
+            "export default { use: { baseURL: 'http://localhost:9230' } }\n"), [])
+        self.assertEqual(self.ports_of(
+            "if (webServer === undefined) { x = { port: 9231 } }"), [])
+
+    def test_matches_inside_a_scanned_value_are_not_rescanned(self) -> None:
+        # Review of 0.16.2: nested `webServer: {` matches each rescanned the
+        # whole window (seconds on a 120 KB file).
+        calls = []
+        real = doctor._balanced_value
+
+        def counting(text, start):
+            calls.append(start)
+            return real(text, start)
+
+        with mock.patch.object(doctor, "_balanced_value", counting):
+            self.ports_of("webServer: {" * 10000)
+        # One read per window of the unbalanced value, not one per match.
+        self.assertLessEqual(len(calls), len("webServer: {") * 10000 // doctor.WEBSERVER_WINDOW + 1)
+
+    def test_backtick_inside_a_template_expression_does_not_hide_the_port(self) -> None:
+        # Review of 0.16.6: the backtick in `${"`"}` closed the template, and
+        # the next one opened a template that blanked the rest of the file.
+        self.assertEqual(self.ports_of(
+            'const s = `${"`"}\n`;\nexport default { webServer: { port: 3850 } }\n'), [3850])
+        self.assertEqual(self.ports_of(
+            "const s = `a${ f({ q: '`' }) }\nb`;\n"
+            "export default { webServer: { port: 3851 } }\n"), [3851])
+        self.assertEqual(self.ports_of(
+            "const s = `${`inner ${'`'}`}\n`;\n"
+            "export default { webServer: { port: 3852 } }\n"), [3852])
+        # A template expression is still part of the string around it.
+        self.assertEqual(self.ports_of(
+            "const t = `${ { webServer: { port: 9260 } } }`;\n"), [])
+
+    def test_webserver_as_a_value_is_not_a_key(self) -> None:
+        # Review of 0.16.6: `x ? 'webServer' : { … }` was read as a key.
+        self.assertEqual(self.ports_of(
+            "const k = flag ? 'webServer' : { port: 9261 };\n"), [])
+        self.assertEqual(self.ports_of(
+            "const k = flag\n  ? \"webServer\"\n  : { port: 9262 };\n"), [])
+        self.assertEqual(self.ports_of(
+            "const v = flag ? webServer : { port: 9263 };\n"), [])
+        # Keys after `{` or `,` still count, quoted or not.
+        self.assertEqual(self.ports_of(
+            "export default { use: {}, 'webServer': { port: 3853 } }"), [3853])
+        self.assertEqual(self.ports_of(
+            "export default {\n  use: {},\n  webServer: { port: 3854 },\n}\n"), [3854])
+
+    def test_port_inside_a_string_in_the_value_is_not_a_port(self) -> None:
+        # Review of 0.16.6: `port:` / `url:` text inside a command string was
+        # read as a property.
+        self.assertEqual(self.ports_of(
+            "export default { webServer: { command: 'serve --port: 9264', port: 3855 } }"),
+            [3855])
+        self.assertEqual(self.ports_of(
+            'export default { webServer: { command: "vite --port 4000 # port: 9265",\n'
+            "  url: 'http://localhost:4000' } }"), [4000])
+        self.assertEqual(self.ports_of(
+            "export default { webServer: { command: `run url: 'http://x:9266'`, port: 3856 } }"),
+            [3856])
+        self.assertEqual(self.ports_of(
+            "export default { webServer: { port: f('a || 9267') } }"), [])
+
+    def test_regex_literal_in_a_template_expression_does_not_hide_the_port(self) -> None:
+        # Review of 0.16.7: a quote, `{` or `//` of a regex literal inside
+        # `${…}` was read as code and swallowed the template's backtick.
+        tail = "\nexport default defineConfig({ webServer: { port: 3000 } })\n"
+        for line in (
+                "const s = `${ s.replace(/'/g, '') }`;",
+                'const s = `${ s.replace(/"/g, "") }`;',
+                "const s = `${ name.replace(/{/g, '') }`;",
+                "const s = `id-${ v.split(/[{]/)[0] }`;",
+                "const s = `${ /a{2,/.test(x) }`;",
+                "const s = `${ u.replace(/\\/\\//, '') }`;",
+        ):
+            self.assertEqual(self.ports_of(line + tail), [3000], line)
+        # The same at the end of a file without a trailing line break.
+        for text in (
+                "const c = `${ s.replace(/{/g, '') }`; export default { webServer: { port: 3000 } }",
+                "const c = `${ s.replace(/'/g, '') }`; export default { webServer: { port: 3000 } }",
+                "const a=`${s.replace(/'/g,'')}`;export default defineConfig({webServer:{port:3000}})",
+        ):
+            self.assertEqual(self.ports_of(text), [3000], text)
+        # An expression that does end on its line is still followed.
+        self.assertEqual(self.ports_of('const s = `${"`"}\n`;' + tail), [3000])
+
+    def test_many_port_keys_in_a_value_stay_linear(self) -> None:
+        # Review of 0.16.7: the `||`/`??` fallback rescanned the rest of the
+        # window for every `port:` (several seconds on this 1 MB input).
+        import time
+
+        text = "{webServer: {" + "port:" * 1590 + "}}\n"
+        started = time.perf_counter()
+        self.assertEqual(self.ports_of(text * 125), [])
+        self.assertLess(time.perf_counter() - started, 2.0)
+        self.assertEqual(self.ports_of(
+            "{ webServer: { port: Number(process.env.PLAYWRIGHT_PORT ?? process.env.PORT) || 3858 } }"),
+            [3858])
+
+    def test_long_template_expressions_stay_linear(self) -> None:
+        import time
+
+        text = ("const s = `${'`'}${\"`\"}`;\n" * 20000
+                + "x = `" + "${`" * 5000 + "`}" * 5000 + "`;\n"
+                + "export default { webServer: { port: 3857 } }\n")
+        started = time.perf_counter()
+        self.assertEqual(self.ports_of(text), [3857])
+        self.assertLess(time.perf_counter() - started, 2.0)
+
+    def test_no_config_no_ports(self) -> None:
+        self.assertEqual(doctor.webserver_ports(self.root), [])
+
+    def test_busy_port_warns_and_names_it(self) -> None:
+        self.write_config(self.port)
+        result = doctor.axis_project_state(self.root)
+        self.assertEqual(result["verdict"], verdict.WARN)
+        self.assertIn(str(self.port), result["detail"])
+        self.assertIn("reuseExistingServer", result["detail"])
+        self.assertIn(str(self.port), result["fix"])
+        self.assertIn("change", result["fix"])
+
+    def test_url_form_is_probed_too(self) -> None:
+        self.write_config(self.port, key="url")
+        self.assertEqual(doctor.axis_project_state(self.root)["verdict"], verdict.WARN)
+
+    def test_free_port_stays_ok(self) -> None:
+        self.write_config(self.free_port())
+        self.assertEqual(doctor.axis_project_state(self.root)["verdict"], verdict.OK)
+
+    @unittest.skipUnless(os.name == "posix",
+                         "lsof identification is POSIX-only; Windows: socket probe alone")
+    def test_lsof_names_pid_command_and_cwd_inside_the_project(self) -> None:
+        make_python_stub(self.bindir, "lsof", (
+            "import sys\n"
+            "args = sys.argv[1:]\n"
+            "if '-d' in args:\n"
+            "    print('p4242'); print('fcwd'); print('n%s')\n"
+            "else:\n"
+            "    print('p4242'); print('cnode')\n") % str(self.root / "app"))
+        self.write_config(self.port)
+        detail = doctor.axis_project_state(self.root)["detail"]
+        self.assertIn("pid 4242", detail)
+        self.assertIn("node", detail)
+        self.assertIn("inside this project", detail)
+
+    @unittest.skipUnless(os.name == "posix",
+                         "lsof identification is POSIX-only; Windows: socket probe alone")
+    def test_lsof_cwd_outside_the_project_is_said(self) -> None:
+        other = tempfile.TemporaryDirectory()
+        self.addCleanup(other.cleanup)
+        make_python_stub(self.bindir, "lsof", (
+            "import sys\n"
+            "args = sys.argv[1:]\n"
+            "if '-d' in args:\n"
+            "    print('p4242'); print('fcwd'); print('n%s')\n"
+            "else:\n"
+            "    print('p4242'); print('cnode')\n") % other.name)
+        self.write_config(self.port)
+        detail = doctor.axis_project_state(self.root)["detail"]
+        self.assertIn("outside this project", detail)
+
+    @unittest.skipUnless(os.name == "nt", "the Windows path of the port probe")
+    def test_windows_never_runs_lsof_and_still_warns(self) -> None:
+        make_python_stub(self.bindir, "lsof", "print('p4242'); print('cnode')\n")
+        self.write_config(self.port)
+        result = doctor.axis_project_state(self.root)
+        self.assertEqual(result["verdict"], verdict.WARN)
+        self.assertNotIn("pid 4242", result["detail"])
+        self.assertIn(str(self.port), result["detail"])
+
+    def test_real_lsof_when_present_names_this_process(self) -> None:
+        real = shutil.which("lsof", path=self._old_path)
+        self.write_config(self.port)
+        if real and os.name != "nt":
+            os.environ["PATH"] = os.path.dirname(real)
+            detail = doctor.axis_project_state(self.root)["detail"]
+            self.assertIn("pid %d" % os.getpid(), detail)
+            self.assertIn("outside this project", detail)
+        else:
+            detail = doctor.axis_project_state(self.root)["detail"]
+            self.assertIn(str(self.port), detail)
+
+    def test_a_failing_lsof_still_warns_on_the_socket_probe(self) -> None:
+        make_python_stub(self.bindir, "lsof", echo_stub_body("", exit_code=1))
+        self.write_config(self.port)
+        result = doctor.axis_project_state(self.root)
+        self.assertEqual(result["verdict"], verdict.WARN)
+        self.assertNotIn("pid", result["detail"])
+
+    def test_probe_error_is_skipped_not_raised(self) -> None:
+        self.write_config(self.port)
+        original = doctor._listening
+
+        def boom(port):
+            raise RuntimeError("probe exploded")
+
+        doctor._listening = boom
+        try:
+            result = doctor.axis_project_state(self.root)
+        finally:
+            doctor._listening = original
+        self.assertEqual(result["verdict"], verdict.OK)
+
+    def test_doctor_cli_still_exits_normally(self) -> None:
+        self.write_config(self.port)
+        report = doctor.diagnose(self.root)
+        self.assertEqual(self.axis(report, 3)["verdict"], verdict.WARN)
+        self.assertEqual(len(report["axes"]), 8)
+
+    def test_doctor_never_kills_the_listener(self) -> None:
+        self.write_config(self.port)
+        doctor.diagnose(self.root)
+        conn = socket.create_connection(("127.0.0.1", self.port), timeout=1)
+        conn.close()
+
+
+# ------------------------------------------------------------------- axis 4
+
+
+class TestAxisSpecSet(DoctorTestCase):
+    def test_no_spec_dir_is_unverified(self) -> None:
+        result = doctor.axis_spec_set(self.root)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+        self.assertIn("spec/", result["detail"])
+
+    def test_spec_dir_present_delegates_to_spec_validate(self) -> None:
+        (self.root / "spec").mkdir()
+        result = doctor.axis_spec_set(self.root)
+        self.assertIn(result["verdict"], (verdict.OK, verdict.WARN,
+                                          verdict.FAIL, verdict.UNVERIFIED))
+
+    def test_spec_module_error_degrades_to_unverified(self) -> None:
+        (self.root / "spec").mkdir()
+        import gatebound.spec as spec_mod
+
+        original = spec_mod.validate
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected")
+
+        spec_mod.validate = boom
+        try:
+            result = doctor.axis_spec_set(self.root)
+        finally:
+            spec_mod.validate = original
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+
+
+# ------------------------------------------------------------------- axis 5
+
+
+class TestAxisContractFreshness(DoctorTestCase):
+    """Axis 5 delegates to `contract.status`; these pin the mapping it applies.
+
+    The stub replaces the *attribute* on the imported module rather than an
+    entry in `sys.modules`, so the tests behave the same whether or not
+    `gatebound.contract` has already been imported elsewhere in the run.
+    """
+
+    def _patch_status(self, fn):
+        import gatebound.contract as contract_mod
+
+        original = contract_mod.status
+        contract_mod.status = fn
+        self.addCleanup(setattr, contract_mod, "status", original)
+
+    def test_stale_contract_fails_axis_5(self) -> None:
+        self._patch_status(lambda root: verdict.FAIL)
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("derive", result["fix"])
+
+    def test_stale_design_input_is_named(self) -> None:
+        import gatebound.contract as contract_mod
+
+        self._patch_status(lambda root: verdict.FAIL)
+        original = contract_mod.stale_inputs
+        contract_mod.stale_inputs = lambda root: ["spec/tokens.json"]
+        self.addCleanup(setattr, contract_mod, "stale_inputs", original)
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("spec/tokens.json", result["detail"])
+        self.assertNotIn("05-gate.md changed", result["detail"])
+
+    def test_absent_contract_is_unverified(self) -> None:
+        self._patch_status(lambda root: verdict.UNVERIFIED)
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+        self.assertIn("derive", result["fix"])
+
+    def test_fresh_contract_is_ok(self) -> None:
+        self._patch_status(lambda root: verdict.OK)
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.OK)
+        self.assertEqual(result["fix"], "")
+
+    def test_contract_module_error_degrades_to_unverified(self) -> None:
+        def boom(root):
+            raise RuntimeError("injected")
+
+        self._patch_status(boom)
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+
+    def test_no_contract_file_on_disk_is_unverified_end_to_end(self) -> None:
+        """No stub at all: an absent contract.json must not read as ok."""
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+
+
+# ------------------------------------------------------------------- axis 6
+
+
+class TestAxisWorkers(DoctorTestCase):
+    def test_missing_default_worker_binary_fails(self) -> None:
+        result = doctor.axis_workers(self.root)
+        self.assertEqual(result["verdict"], verdict.FAIL)
+        self.assertIn("claude", result["detail"])
+        self.assertTrue(result["fix"])
+
+    def test_present_default_worker_binary_is_ok(self) -> None:
+        self.stub_claude()
+        result = doctor.axis_workers(self.root)
+        self.assertEqual(result["verdict"], verdict.OK)
+        self.assertEqual(result["fix"], "")
+
+
+# ------------------------------------------------------------------- axis 7
+
+
+class TestAxisPython(DoctorTestCase):
+    def test_running_interpreter_meets_the_floor(self) -> None:
+        result = doctor.axis_python(self.root)
+        self.assertEqual(result["verdict"], verdict.OK)
+        self.assertIn(".", result["detail"])
+
+    def test_floor_is_three_nine(self) -> None:
+        self.assertEqual(doctor.MIN_PYTHON, (3, 9))
+
+
+# --------------------------------------------------------------------- CLI
+
+
+class TestCli(DoctorTestCase):
+    def test_json_output_parses_and_lists_seven_axes(self) -> None:
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            doctor.run(["--json", "--root", str(self.root)])
+        report = json.loads(buf.getvalue())
+        self.assertEqual(len(report["axes"]), 8)
+
+    def test_exit_1_when_any_axis_fails(self) -> None:
+        import contextlib
+        import io
+
+        # No `claude` on PATH → axis 6 fails.
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = doctor.run(["--root", str(self.root)])
+        self.assertEqual(code, 1)
+
+    def test_exit_0_when_no_axis_fails(self) -> None:
+        import contextlib
+        import io
+
+        report = {"verdict": verdict.UNVERIFIED, "axes": [
+            {"n": 1, "axis": "x", "verdict": verdict.UNVERIFIED, "detail": "", "fix": ""}]}
+        original = doctor.diagnose
+        doctor.diagnose = lambda root: report
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = doctor.run(["--root", str(self.root)])
+        finally:
+            doctor.diagnose = original
+        self.assertEqual(code, 0)
+
+    def test_table_output_shows_fixes(self) -> None:
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            doctor.run(["--root", str(self.root)])
+        self.assertIn("gatebound doctor", buf.getvalue())
+        self.assertIn("fix:", buf.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestPythonAxisStorePlaceholder(unittest.TestCase):
+    """ADR-0030 decision 3: name the Microsoft Store placeholder on PATH."""
+
+    def _which(self, table):
+        import shutil as _sh
+        original = _sh.which
+        _sh.which = lambda name, *a, **k: table.get(name)
+        self.addCleanup(setattr, _sh, "which", original)
+
+    def test_placeholders_on_path_warn_and_name_the_fix(self) -> None:
+        self._which({"python3": r"D:\Local\Microsoft\WindowsApps\python3.exe",
+                     "python": r"D:\Local\Microsoft\WindowsApps\python.exe",
+                     "py": r"C:\Windows\py.exe"})
+        result = doctor.axis_python(pathlib.Path("."))
+        self.assertEqual(result["verdict"], verdict.WARN)
+        self.assertIn("python3", result["detail"])
+        self.assertIn("python", result["detail"])
+        self.assertIn("Store", result["detail"])
+        self.assertTrue(result["fix"])
+
+    def test_real_interpreters_stay_ok(self) -> None:
+        self._which({"python3": "/usr/bin/python3", "python": "/usr/bin/python"})
+        result = doctor.axis_python(pathlib.Path("."))
+        self.assertEqual(result["verdict"], verdict.OK)
+        self.assertEqual(result["fix"], "")
+
