@@ -1,6 +1,6 @@
 # gatebound
 
-Status: 0.17.2 — early. License: MIT.
+Status: 0.17.3 — early. License: MIT.
 Project site: [gatebound.dev](https://gatebound.dev).
 Using gatekit 0.16.x? gatebound continues it under its own name (the gatekit
 history stays at [loganmakes/gatekit](https://github.com/loganmakes/gatekit));
@@ -103,7 +103,7 @@ whatever is missing — Git, Python, Claude Code, Node.js LTS — fixes the user
 `PYTHONUTF8=1` and installs or updates gatebound (ADR-0033):
 
 ```powershell
-irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.2/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.3/install/install.ps1 | iex
 ```
 
 Then open a new PowerShell window, run `claude` in your project folder (it
@@ -115,7 +115,7 @@ to update. To see the plan without changing anything:
 (ADR-0033 decision 12):
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.2/install/install.ps1))) -WithCodex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.3/install/install.ps1))) -WithCodex
 ```
 
 Its last row, `codex-hooks`, stays `warn` until you do two things in each
@@ -315,7 +315,7 @@ defaults.
 
 ## Status
 
-**0.17.2 — early.** The core gate/ledger/contract/approval kernel, worker
+**0.17.3 — early.** The core gate/ledger/contract/approval kernel, worker
 dispatch (host or a different-model worker), Codex evaluator support, and
 the CI enforcement tooling are all in place; expect rough edges. See
 `CHANGELOG.md` for what shipped and `docs/decisions/` for the architectural

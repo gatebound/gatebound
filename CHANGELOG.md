@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.3 — 2026-10-10
+
+### Fixed
+
+- **`doctor` reads Codex's current hook-trust records.** Codex 0.157 records
+  a plugin hook's trust under the plugin id
+  (`gatebound@gatebound:hooks/hooks.json:<event>:<group>:<hook>`), not under the cached
+  `hooks.json` path, so the host-layer axis kept warning "hooks are not
+  trusted" after every hook had been trusted. Both forms count now, and the
+  check is per hook: each hook Codex runs must have a trust entry with a
+  `trusted_hash` that is not disabled, and partial trust is a `warn` naming
+  how many of how many. Whether that trust predates an upgrade cannot be
+  told (Codex's hash recipe is not documented); the `ok` detail says to
+  trust again in `/hooks` if Codex lists the hooks as changed.
+
 ## 0.17.2 — 2026-10-10
 
 Four smaller findings of the same timed build (none changes a verdict).
