@@ -13,7 +13,7 @@ import unittest
 # `plugin/tests` on sys.path, so `plugin/` has to be added explicitly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gatebound import ledger
+from gatebound import ledger, paths
 
 
 class TempProject(unittest.TestCase):
@@ -350,3 +350,49 @@ class TestDesignPipeline(unittest.TestCase):
         self.assertEqual(
             ledger.Ledger.load(self.root, "s-design").data["active_pipeline"], "design"
         )
+
+
+class TestScopesSurviveAStaleSave(unittest.TestCase):
+    """ADR-0040 review: SubagentStop saves the ledger while the main
+    session's hooks hold older copies; no save may undo another's scope change."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = pathlib.Path(os.path.realpath(self._tmp.name))
+        paths.state_dir(self.root).mkdir()
+
+    def test_stale_copy_does_not_resurrect_a_released_scope(self) -> None:
+        first = ledger.Ledger.load(self.root, "s")
+        first.add_scope("a", ["src/**"], "t1")
+        first.save()
+        stale = ledger.Ledger.load(self.root, "s")
+        releaser = ledger.Ledger.load(self.root, "s")
+        releaser.release_scope(tool_use_id="t1")
+        releaser.save()
+        stale.append_event("unrelated")
+        stale.save()
+        self.assertEqual(ledger.Ledger.load(self.root, "s").data["scopes"], [])
+
+    def test_stale_copy_does_not_drop_a_new_scope(self) -> None:
+        stale = ledger.Ledger.load(self.root, "s")
+        adder = ledger.Ledger.load(self.root, "s")
+        adder.add_scope("b", ["lib/**"], "t2")
+        adder.save()
+        stale.append_event("unrelated")
+        stale.save()
+        owners = [e["owner"] for e in ledger.Ledger.load(self.root, "s").data["scopes"]]
+        self.assertEqual(owners, ["b"])
+
+    def test_two_writers_both_keep_their_changes(self) -> None:
+        base = ledger.Ledger.load(self.root, "s")
+        base.add_scope("a", ["src/**"], "t1")
+        base.save()
+        one = ledger.Ledger.load(self.root, "s")
+        two = ledger.Ledger.load(self.root, "s")
+        one.release_scope(tool_use_id="t1")
+        two.add_scope("b", ["lib/**"], "t2")
+        one.save()
+        two.save()
+        owners = [e["owner"] for e in ledger.Ledger.load(self.root, "s").data["scopes"]]
+        self.assertEqual(owners, ["b"])

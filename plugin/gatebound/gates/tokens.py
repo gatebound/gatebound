@@ -14,7 +14,11 @@ silent ``0``, because "could not check" is not "checked and fine".
 Scope at ADR-0008 acceptance: **colours only**. Hex (``#rgb``, ``#rgba``,
 ``#rrggbb``, ``#rrggbbaa``) and ``rgb()``/``rgba()``/``hsl()``/``hsla()``
 literals are compared, normalized, against every colour value found in
-``spec/tokens.json``. Lengths and font families are an open question in the
+``spec/tokens.json``. A token may also be a bare HSL triplet (``0 0% 9%``,
+optionally ``/ alpha``) — the shadcn convention the shipped ``shadcn-neutral``
+preset uses — and it then matches ``hsl(0 0% 9%)`` in any spelling. A colour
+function whose arguments use ``var(...)`` reads a token through a custom
+property, so it is a reference, not a literal, and is not counted. Lengths and font families are an open question in the
 ADR and are not scanned. Comments and ``url(...)`` contents are ignored.
 """
 from __future__ import annotations
@@ -57,6 +61,11 @@ NEVER_VIOLATIONS = frozenset({"transparent", "currentcolor", "inherit"})
 
 _HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-zA-Z])")
 _FUNC_RE = re.compile(r"(?<![\w-])(?:rgba?|hsla?)\s*\([^)]*\)", re.IGNORECASE)
+#: A bare HSL triplet token: ``H S% L%`` with an optional ``/ alpha``.
+_TRIPLET_RE = re.compile(
+    r"-?\d+(?:\.\d+)?(?:deg)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%"
+    r"(?:\s*/\s*(?:\d+(?:\.\d+)?|\.\d+)%?)?"
+)
 _URL_RE = re.compile(r"url\([^)]*\)", re.IGNORECASE)
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -97,11 +106,60 @@ def normalize_colour(literal: str) -> str:
         if len(digits) in (3, 4):
             digits = "".join(ch * 2 for ch in digits)
         return "#" + digits
+    match = re.fullmatch(r"(rgb|hsl)a?\s*\((.*)\)", text, re.DOTALL)
+    if match:
+        # Comma, space and slash syntaxes are one colour: hsl(0 0% 9% / .5),
+        # hsla(0, 0%, 9%, .5) and hsl(0,0%,9%,.5) all become hsl(0,0%,9%,.5).
+        args = [arg for arg in re.split(r"[\s,/]+", match.group(2)) if arg]
+        return "%s(%s)" % (match.group(1), ",".join(
+            _canonical_arg(arg, index) for index, arg in enumerate(args)))
     return re.sub(r"\s+", "", text)
+
+
+def _canonical_arg(arg: str, index: int) -> str:
+    """One spelling per number: ``0deg`` is ``0``, ``.50`` is ``0.5``, and an
+    alpha (the fourth argument) given in percent is a fraction."""
+    text = arg[:-3] if index == 0 and arg.endswith("deg") else arg
+    percent = text.endswith("%")
+    number = text[:-1] if percent else text
+    try:
+        value = float(number)
+    except ValueError:
+        return arg
+    if index == 3 and percent:
+        return "%g" % (value / 100)
+    return ("%g%%" if percent else "%g") % value
 
 
 def _is_colour(text: str) -> bool:
     return bool(_HEX_RE.fullmatch(text) or _FUNC_RE.fullmatch(text))
+
+
+def _token_colour(text: str, group: str = "color") -> Optional[str]:
+    """The colour a token value spells, or ``None``. A bare HSL triplet is
+    read as ``hsl(<triplet>)``, but only in a colour group: elsewhere the
+    same shape is not a colour."""
+    if _is_colour(text):
+        return text
+    if "colo" in group.lower() and _TRIPLET_RE.fullmatch(text):
+        return "hsl(%s)" % text
+    return None
+
+
+def _is_reference(literal: str) -> bool:
+    """``hsl(var(--primary))``: a colour read through a custom property.
+
+    Only a ``var(...)`` among the colour channels makes it a reference; one
+    in the alpha slot alone (``rgb(255 0 0 / var(--a))``) still leaves a
+    hard-coded colour, which is counted.
+    """
+    inner = literal.lower().split("(", 1)[-1]
+    if "/" in inner:
+        channels = inner.split("/", 1)[0]
+    else:
+        parts = inner.split(",")
+        channels = ",".join(parts[:3]) if len(parts) >= 4 else inner
+    return "var(" in channels
 
 
 def _leaf_values(value: Any) -> Iterable[Any]:
@@ -125,8 +183,9 @@ def known_colours(data: Dict[str, Any]) -> Dict[str, Tuple[str, str]]:
     for group, members in design.token_groups(data).items():
         for name, value in members.items():
             for leaf in _leaf_values(value):
-                if isinstance(leaf, str) and _is_colour(leaf.strip()):
-                    known.setdefault(normalize_colour(leaf), ("%s.%s" % (group, name), leaf))
+                colour = _token_colour(leaf.strip(), group) if isinstance(leaf, str) else None
+                if colour is not None:
+                    known.setdefault(normalize_colour(colour), ("%s.%s" % (group, name), leaf))
     return known
 
 
@@ -227,6 +286,8 @@ def find_literals(text: str) -> List[Tuple[int, str]]:
     found: List[Tuple[int, str]] = []
     for regex in (_FUNC_RE, _HEX_RE):
         for match in regex.finditer(text):
+            if _is_reference(match.group(0)):
+                continue
             line = text.count("\n", 0, match.start()) + 1
             found.append((line, match.group(0)))
     found.sort()

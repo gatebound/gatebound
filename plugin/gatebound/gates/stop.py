@@ -477,6 +477,25 @@ def legacy_snapshot(led: "ledger.Ledger") -> List[str]:
     return [k for k in keys if isinstance(k, str)] if isinstance(keys, list) else []
 
 
+def running_subagents(event: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """``(id, description)`` of the background subagents Claude Code reports
+    as still running in this Stop's payload (``background_tasks``).
+
+    Other background work (a dev server shell) never defers judging: it does
+    not wake the session when it ends, and it is often meant to outlive it.
+    """
+    tasks = event.get("background_tasks")
+    if not isinstance(tasks, list):
+        return []
+    names = []
+    for task in tasks:
+        if (isinstance(task, dict) and task.get("type") == "subagent"
+                and task.get("status") == "running"):
+            names.append((str(task.get("id") or ""),
+                          str(task.get("description") or task.get("id") or "?")))
+    return names
+
+
 def handle(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Run the contract when a build/verify pipeline is active and judge it."""
     root = hookio.event_root(event)
@@ -543,6 +562,28 @@ def handle(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # A new job, a redelegated task or another pipeline: judge again.
         stop_state["stood_down"] = None
         led.append_event("stop_stand_down_cleared", {"pipeline": pipeline})
+
+    # A background subagent (verify's evaluator, a build worker) is still
+    # running and may be using what the contract needs — a test port, the
+    # tree. Judge nothing and allow: the session wakes when it finishes and
+    # that Stop judges. Only an agent the spawn gate recorded counts, at most
+    # MAX_BLOCKS Stops in a row, and the recorded verdict is left as it is
+    # (`unverified` when there is none yet, never a pass) — ADR-0040 review.
+    recorded = set(led.scope_agent_ids())
+    agents = [name for agent_id, name in running_subagents(event) if agent_id in recorded]
+    try:
+        deferrals = int(stop_state.get("deferrals", 0) or 0)
+    except (TypeError, ValueError):
+        deferrals = 0
+    if agents and deferrals < MAX_BLOCKS:
+        stop_state["deferrals"] = deferrals + 1
+        if not stop_state.get("final_verdict"):
+            stop_state["final_verdict"] = verdict.UNVERIFIED
+        led.append_event("stop_deferred_for_subagents",
+                         {"agents": agents, "deferrals": stop_state["deferrals"]})
+        led.save()
+        return hookio.allow()
+    stop_state["deferrals"] = 0
 
     settled, job_id = _subject(root, pipeline)
     result: Dict[str, Any] = {"reasons": []}

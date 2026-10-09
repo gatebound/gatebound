@@ -54,6 +54,7 @@ When you are blocked, the first thing to run is `/gatebound:doctor`. Seeing whic
 | `ModuleNotFoundError: gatebound` when running the CLI | You used the module form, and from the project directory the package is not on `sys.path` | Use the launcher form `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" <sub>` |
 | A spawn is denied | The prompt has no `gatebound-scope` fence, or its JSON is invalid | Add the fence. `write_scope` and `stop_when` are required |
 | Spawn scope conflict | It overlaps the scope of an agent that is already active | Narrow the scope, or wait until that agent finishes. The message names the owner |
+| The Stop gate logs `stop_deferred_for_subagents` and ends the turn without judging | A background subagent the spawn gate recorded (verify's evaluator, for one) is still running and may be using a test port or files, so judging waits (at most 3 Stops in a row). Nothing is recorded as a pass | Nothing to do. When the agent finishes the session wakes, and that turn's Stop judges the contract (ADR-0040) |
 | The build passed, but it says the work is not done | Passing the build and passing the contract are different | `/gatebound:verify` judges the contract |
 
 ## Where the hook error log is

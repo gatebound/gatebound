@@ -113,7 +113,7 @@ This is `.gatebound/runs/<session_id>.json`. It holds the output language, the a
 A list of file globs a task may write, or the string `"read-only"`. It is used in two places.
 
 - It is declared for each task in `spec/04-tasks.md`, and inside a worker session the write gate enforces it based on the `GATEBOUND_TASK_ID` environment variable.
-- It is declared in a `gatebound-scope` fence when a subagent is spawned, and the spawn gate checks whether it overlaps a scope that is already active.
+- It is declared in a `gatebound-scope` fence when a subagent is spawned, and the spawn gate checks whether it overlaps a scope that is already active. The scope is released when that agent finishes (ADR-0040).
 
 If two tasks in the same round have overlapping scopes, `spec validate` reports `fail`. Do not widen a scope to get rid of a conflict. Split the round or re-cut the tasks.
 
