@@ -197,11 +197,23 @@ In this case it runs `workers check codex` first, explains what will change, and
 
 ## Update
 
+Run two lines in a terminal. The first only refreshes the marketplace listing; the second moves the installed plugin to the new version. Inside a Claude Code session, `/plugin marketplace update gatebound` and `/plugin update gatebound@gatebound` do the same.
+
 ```bash
-/plugin marketplace update gatebound
+claude plugin marketplace update gatebound
+claude plugin update gatebound@gatebound
 ```
 
-Restart Claude Code after updating too. The current session keeps using the old version it already loaded. After restarting, check axes 1 and 2 with `/gatebound:doctor`.
+Restart Claude Code after updating too. The current session keeps using the old version it already loaded. After restarting, check axes 1 and 2 with `/gatebound:doctor`. On Windows, if you installed with the install script, running that one line again also updates.
+
+If you also use the Codex plugin, update it separately.
+
+```bash
+codex plugin marketplace upgrade gatebound
+codex plugin add gatebound@gatebound
+```
+
+Then open `codex` → `/hooks` in a terminal, press `t` on every gatebound hook listed as changed to trust it again, and start a new session. Trust is per hook content, so a release that changes the hooks needs it again. Doctor axis 8 counts the trusted hooks.
 
 ## Coming from gatekit
 
