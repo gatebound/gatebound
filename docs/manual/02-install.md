@@ -197,11 +197,23 @@ Codex 백엔드를 쓰려면 별도로 요청해야 한다.
 
 ## 업데이트
 
+터미널에서 두 줄을 실행한다. 첫 줄은 마켓플레이스 목록만 새로 받아 오고, 설치된 플러그인을 새 버전으로 바꾸는 것은 둘째 줄이다. Claude Code 세션 안에서는 `/plugin marketplace update gatebound`, `/plugin update gatebound@gatebound`로 같은 일을 한다.
+
 ```bash
-/plugin marketplace update gatebound
+claude plugin marketplace update gatebound
+claude plugin update gatebound@gatebound
 ```
 
-업데이트 후에도 Claude Code를 재시작한다. 현재 세션은 이미 로드된 구 버전을 계속 쓴다. 재시작 뒤 `/gatebound:doctor`로 1·2번 축을 확인한다.
+업데이트 후에도 Claude Code를 재시작한다. 현재 세션은 이미 로드된 구 버전을 계속 쓴다. 재시작 뒤 `/gatebound:doctor`로 1·2번 축을 확인한다. Windows에서 설치 스크립트로 설치했다면 그 한 줄을 다시 실행해도 업데이트된다.
+
+Codex 플러그인도 쓰고 있다면 따로 업데이트한다.
+
+```bash
+codex plugin marketplace upgrade gatebound
+codex plugin add gatebound@gatebound
+```
+
+그다음 터미널에서 `codex` → `/hooks`를 열어, 바뀐 것으로 표시된 gatebound 훅마다 `t`를 눌러 다시 신뢰하고 새 세션을 연다. 신뢰는 훅 내용 단위라 훅이 바뀐 릴리스에서는 다시 해야 한다. doctor 8번 축이 신뢰한 훅 수를 센다.
 
 ## gatekit에서 옮겨 오기
 
