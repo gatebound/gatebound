@@ -36,6 +36,11 @@ folder you install.
   review and approve. `/gatebound:build` and `/gatebound:verify` may start a
   worker or evaluator session with the `claude` CLI, or with the `codex` CLI
   when you enable it.
+- **Local configuration.** `doctor` and the Codex setup read the Claude
+  Code and Codex configuration folders (`~/.claude` and `~/.codex`, or the
+  folders named by `CLAUDE_CONFIG_DIR` and `CODEX_HOME`) to check that the
+  plugin and its hooks are installed and trusted. The plugin reads no API
+  key or token, and nothing it reads there leaves your machine.
 - **Network.** The plugin itself makes no network requests and sends no
   telemetry. `doctor` connects to `127.0.0.1` and `::1` to check whether your dev
   server's port is already in use. Your approved criteria and any worker CLI you enable
