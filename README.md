@@ -1,5 +1,7 @@
 # gatebound
 
+English | [한국어](README.ko.md)
+
 Status: 0.17.4 — early. License: MIT.
 Project site: [gatebound.dev](https://gatebound.dev).
 Using gatekit 0.16.x? gatebound continues it under its own name (the gatekit
@@ -7,7 +9,7 @@ history stays at [loganmakes/gatekit](https://github.com/loganmakes/gatekit));
 see [Coming from gatekit](docs/manual/en/02-install.md#coming-from-gatekit).
 
 gatebound is a gate-enforced harness for AI-assisted development in
-[Claude Code](https://claude.com/claude-code). It turns the usual prose
+[Claude Code](https://claude.com/claude-code) and Codex. It turns the usual prose
 instructions you'd put in a `CLAUDE.md` or a slash command into hooks that
 actually run, every time, instead of guidance a model can forget or skip
 under pressure.
@@ -64,55 +66,103 @@ that matter into things a hook enforces:
 
 ## Install
 
-```
-/plugin marketplace add https://github.com/gatebound/gatebound
-/plugin install gatebound@gatebound
-```
+The first time, five steps. If something goes wrong, the
+[install problem](https://github.com/gatebound/gatebound/issues/new?template=install_problem.yml)
+form asks for what is needed to help.
 
-Restart Claude Code after installing so the hooks in `plugin/hooks/hooks.json`
-are picked up.
+**1. Install Claude Code** (skip this if `claude --version` already prints a
+version).
 
-**macOS and Linux: three lines.** In a terminal:
+- macOS and Linux, in a terminal:
+
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash
+  ```
+
+- Windows: nothing to do here — the one-line installer in step 2 installs
+  Claude Code along with everything else.
+
+**2. Install gatebound.**
+
+- macOS and Linux, in the same terminal:
+
+  ```bash
+  claude plugin marketplace add gatebound/gatebound
+  claude plugin install gatebound@gatebound
+  ```
+
+- Windows, in PowerShell (not as administrator). This installs whatever is
+  missing — Git, Python, Claude Code, Node.js LTS — fixes the user PATH, sets
+  `PYTHONUTF8=1` and installs or updates gatebound (ADR-0033):
+
+  ```powershell
+  irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1 | iex
+  ```
+
+- Already inside a Claude Code session, the same install is:
+
+  ```
+  /plugin marketplace add https://github.com/gatebound/gatebound
+  /plugin install gatebound@gatebound
+  ```
+
+  Restart Claude Code afterwards so the hooks in `plugin/hooks/hooks.json`
+  are picked up.
+
+**3. Open a new terminal** (a new PowerShell window on Windows), so it sees
+what was just installed, and go to your project folder. A new, empty folder
+is fine:
 
 ```bash
-curl -fsSL https://claude.ai/install.sh | bash
-claude plugin marketplace add gatebound/gatebound
-claude plugin install gatebound@gatebound
+mkdir my-app
+cd my-app
 ```
 
-The first line is Claude Code's official installer; the other two add
-gatebound. You need `git` and Python 3.9 or newer as `python3`: on macOS,
-`xcode-select --install` provides both (run it if `git --version` asks);
-on Linux they are usually there already (Debian/Ubuntu:
-`sudo apt install -y git python3`). Install Node.js LTS at the same time
+**4. Start Claude Code** by typing `claude` and pressing Enter. The first
+time, it opens the browser to log in; finish that and come back to the
+terminal.
+
+**5. Type `/gatebound:doctor`** at the Claude Code prompt and press Enter.
+
+**What a healthy result looks like.** Doctor shows one row per axis, eight
+in all. In a new folder:
+
+| # | axis | verdict |
+|---|---|---|
+| 1 | plugin files | `ok` |
+| 2 | hooks registered | `ok` |
+| 3 | project state | `unverified` |
+| 4 | spec set | `unverified` |
+| 5 | contract freshness | `unverified` |
+| 6 | workers | `ok` |
+| 7 | python | `ok` |
+| 8 | host layer | `ok` |
+
+Rows 1 and 2 must be `ok`: they say the gates are installed and their hooks
+are loaded. Rows 3–5 are `unverified` because there is nothing to check
+yet, so the overall verdict reads `unverified` too — that is not a problem.
+Doctor says so and names the next step: `/gatebound:setup`, then
+`/gatebound:discover`. Any `fail` comes with a fix line to run; on Windows a
+`warn` on row 7 only notes the Store placeholder.
+
+**Updating.** macOS and Linux:
+`claude plugin marketplace update gatebound && claude plugin update gatebound@gatebound`.
+On Windows, run the step 2 line again. Restart Claude Code afterwards.
+
+**macOS and Linux notes.** Install Node.js LTS at the same time
 (nodejs.org, or `brew install node` on macOS; on Linux follow nodejs.org,
 since distribution packages are often old): gatebound does not need it, but
 the web apps you build and deploy do, and the Windows installer adds it by
-default. Then open a new terminal, run `claude`
-in your project folder and `/gatebound:doctor`. To update:
-`claude plugin marketplace update gatebound && claude plugin update gatebound@gatebound`.
-For Codex as well, run `npm install -g @openai/codex` and follow [Codex](#codex-app-and-cli)
-below. No installer script is offered here: none of the Windows failures it
-handles (a placeholder Python, a stale PATH, cp949, hooks run in
-PowerShell) occur on these systems. The 2026-10-05 Windows checks did not
-cover them, so run the gate check once: a code write before
-`spec/05-gate.md` is approved must be denied.
+default. For Codex as well, run `npm install -g @openai/codex` and follow
+[Codex](#codex-app-and-cli) below. No installer script is offered here: none
+of the Windows failures it handles (a placeholder Python, a stale PATH,
+cp949, hooks run in PowerShell) occur on these systems. The 2026-10-05
+Windows checks did not cover them, so run the gate check once: a code write
+before `spec/05-gate.md` is approved must be denied.
 
-**Windows: one line.** In PowerShell (not as administrator), this installs
-whatever is missing — Git, Python, Claude Code, Node.js LTS — fixes the user PATH, sets
-`PYTHONUTF8=1` and installs or updates gatebound (ADR-0033):
-
-```powershell
-irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1 | iex
-```
-
-Then open a new PowerShell window, run `claude` in your project folder (it
-asks you to log in the first time) and `/gatebound:doctor`. Run the line again
-to update. To see the plan without changing anything:
-`& ([scriptblock]::Create((irm <url>))) -DryRun`.
-
-**Windows with Codex: one line.** The same installer, plus the Codex CLI
-(ADR-0033 decision 12):
+**Windows notes.** To see the installer's plan without changing anything:
+`& ([scriptblock]::Create((irm <url>))) -DryRun`. With Codex as well, the
+same installer plus the Codex CLI (ADR-0033 decision 12):
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1))) -WithCodex
