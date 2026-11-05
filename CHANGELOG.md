@@ -4,6 +4,51 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.5 — 2026-11-05
+
+A first install, made easier to get right before a study cohort starts.
+
+### Changed
+
+- **`doctor` reads a new folder as not started, not broken.** The verdict
+  of a project with no `spec/` stays `unverified` (nothing checked is not
+  a pass), and the table now adds a `next:` line under the headline: "not
+  started yet — run /gatebound:setup, then /gatebound:discover", or "set
+  up, no spec yet — run /gatebound:discover". Axis 3's fix is
+  `/gatebound:setup` instead of a raw `doctor --root` line, and axis 5's is
+  `/gatebound:gate` while `spec/05-gate.md` does not exist. The reinstall
+  fixes name the marketplace: `/plugin install gatebound@gatebound`.
+  `--json` is unchanged.
+- **README install walkthrough.** Both READMEs open with an English |
+  한국어 switch and walk five numbered steps: install Claude Code, install
+  the plugin, open a new terminal in the project folder, run `claude` and
+  log in, type `/gatebound:doctor`, with a table of what a healthy result
+  in a new folder looks like. The intro names Codex as well.
+- **Prerequisites stated up front** (README and install manual, ko/en):
+  Python 3.9+ and git are the user's to install (macOS:
+  `xcode-select --install`); on Windows, Git for Windows is required, since
+  Claude Code 2.1.299 blocks a tool call guarded by a `PreToolUse` hook that
+  names no shell when Git for Windows is missing; projects with screens
+  should run `npx playwright install chromium` before the session.
+- **Issue templates.** Bug reports ask for the host version
+  (`claude --version` / `codex --version`); a new "[install]" form asks for
+  the OS, host and version, the exact install command, its output and
+  doctor's output. Labels carry a Korean hint.
+- **Plugin folder README** (`plugin/README.md`) says what gatebound runs,
+  reads and sends, including the local config folders doctor reads.
+- `AGENTS.md` is a regular file pointing at `CLAUDE.md` rather than a
+  symbolic link, which Anthropic's plugin directory refuses to validate.
+- The marketplace owner and the plugin author are the public name, Logan
+  Kim.
+
+### Fixed
+
+- **The install manual pinned an old installer.** The Windows one-liners in
+  the manual (ko/en) still fetched `v0.17.0/install/install.ps1` and the
+  index called 0.17.0 current; every pin and the index now name the
+  release, as the README does. "Coming from gatekit" adds that the gatekit
+  line continues, now at 0.16.21.
+
 ## 0.17.4 — 2026-10-13
 
 ### Fixed

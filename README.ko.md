@@ -2,7 +2,7 @@
 
 [English](README.md) | 한국어
 
-상태: 0.17.4 — 초기 단계. 라이선스: MIT.
+상태: 0.17.5 — 초기 단계. 라이선스: MIT.
 프로젝트 사이트: [gatebound.dev](https://gatebound.dev).
 gatekit 0.16.x를 쓰고 있다면: gatebound는 그 이름을 바꿔 이어 가는 프로젝트입니다(gatekit
 기록은 [loganmakes/gatekit](https://github.com/loganmakes/gatekit)에 남습니다).
@@ -102,7 +102,7 @@ gatebound는 [Claude Code](https://claude.com/claude-code)와 Codex에서 AI 보
   설정한 뒤 gatebound를 설치하거나 업데이트합니다(ADR-0033):
 
   ```powershell
-  irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1 | iex
+  irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.5/install/install.ps1 | iex
   ```
 
 - 이미 Claude Code 세션 안이라면 같은 설치를 이렇게 합니다:
@@ -169,7 +169,7 @@ Windows 문제(가짜 Python, 갱신 안 된 PATH, cp949, PowerShell로 실행�
 스크립트에 Codex CLI를 더합니다(ADR-0033 결정 12):
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1))) -WithCodex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.5/install/install.ps1))) -WithCodex
 ```
 
 마지막 `codex-hooks` 줄은 Codex를 쓰는 프로젝트마다 두 가지를 하기 전까지
@@ -364,7 +364,7 @@ spec/
 
 ## 상태
 
-**0.17.4 — 초기 단계.** 게이트/원장/계약/승인 커널, 워커 실행(호스트
+**0.17.5 — 초기 단계.** 게이트/원장/계약/승인 커널, 워커 실행(호스트
 세션 또는 다른 모델의 워커), Codex 평가자 지원, CI 강제 도구가 모두
 갖춰져 있으나, 아직 거친 부분이 있을 수 있습니다. 무엇이 출시되었는지는
 `CHANGELOG.md`를, 현재 구조의 배경이 된 아키텍처 결정은

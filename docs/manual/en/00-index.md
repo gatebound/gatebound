@@ -48,7 +48,7 @@ If you prefer to read step by step, use this order.
 
 - Every CLI example in this manual has the form `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" <subcommand>`. The reason is in `08-cli.md`. **Most work is done with `/gatebound:<command>` slash commands, without typing the CLI yourself** — the commands call the CLI internally, and you type it directly only to inspect state.
 - Identifiers (file names, commands, flags, JSON keys, fence names, `ok`/`warn`/`fail`/`unverified`) are not translated.
-- The current version is 0.17.4.
+- The current version is 0.17.5.
 
 ## Export to Notion
 

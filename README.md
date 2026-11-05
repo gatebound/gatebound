@@ -2,7 +2,7 @@
 
 English | [한국어](README.ko.md)
 
-Status: 0.17.4 — early. License: MIT.
+Status: 0.17.5 — early. License: MIT.
 Project site: [gatebound.dev](https://gatebound.dev).
 Using gatekit 0.16.x? gatebound continues it under its own name (the gatekit
 history stays at [loganmakes/gatekit](https://github.com/loganmakes/gatekit));
@@ -107,7 +107,7 @@ version).
   `PYTHONUTF8=1` and installs or updates gatebound (ADR-0033):
 
   ```powershell
-  irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1 | iex
+  irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.5/install/install.ps1 | iex
   ```
 
 - Already inside a Claude Code session, the same install is:
@@ -176,7 +176,7 @@ before `spec/05-gate.md` is approved must be denied.
 same installer plus the Codex CLI (ADR-0033 decision 12):
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.4/install/install.ps1))) -WithCodex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gatebound/gatebound/v0.17.5/install/install.ps1))) -WithCodex
 ```
 
 Its last row, `codex-hooks`, stays `warn` until you do two things in each
@@ -376,7 +376,7 @@ defaults.
 
 ## Status
 
-**0.17.4 — early.** The core gate/ledger/contract/approval kernel, worker
+**0.17.5 — early.** The core gate/ledger/contract/approval kernel, worker
 dispatch (host or a different-model worker), Codex evaluator support, and
 the CI enforcement tooling are all in place; expect rough edges. See
 `CHANGELOG.md` for what shipped and `docs/decisions/` for the architectural

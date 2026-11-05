@@ -68,7 +68,7 @@ body:
     attributes:
       label: gatebound version
       description: The version the host's plugin list shows for gatebound (Claude Code `/plugin`), or the `Status:` line of the README you installed from.
-      placeholder: "0.17.0"
+      placeholder: "0.17.5"
     validations:
       required: true
   - type: textarea

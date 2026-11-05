@@ -1,6 +1,6 @@
 {
   "name": "gatebound",
-  "version": "0.17.4",
+  "version": "0.17.5",
   "description": "Gate-enforced harness: interview → spec, mockup → spec, gated build, evidence-based verify.",
   "author": {
     "name": "Logan Kim"
