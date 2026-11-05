@@ -5,12 +5,15 @@
 | Item | Condition | How to check |
 |---|---|---|
 | Python | 3.9 or newer, **installed by you**. The hooks try `python3` → `python` → `py -3` in that order, and run only after quietly confirming that the name is a real Python 3.9+ (ADR-0030). The `python`/`python3` that Windows ships by default are Microsoft Store placeholders, not Python | doctor axis 7. `warn` if a placeholder is on PATH |
+| git | **Installed by you.** macOS: `xcode-select --install` (installs git and `python3`); Debian/Ubuntu: `sudo apt install -y git python3`; Windows: Git for Windows (below) | `git --version` |
+| Git for Windows (Windows only) | **Required for Claude Code on Windows.** Since Claude Code 2.1.299, a `PreToolUse` hook that names no shell (gatebound's hooks are such hooks) blocks the tool call when Git for Windows is missing, so without Git Bash every file write and shell command is refused. The install script installs it | `git --version` in PowerShell |
+| Playwright browser | Projects with screens: E2E tests in verify run in a real browser, and the first download is large (a few hundred MB). Download it before the session: `npx playwright install chromium` in the project folder (needs Node.js) | the command finishes without an error |
 | `claude` CLI | Must be on PATH | doctor axis 6 |
 | Claude Code | A version that can install and enable plugins | doctor axis 2 |
 
 The gatebound kernel uses only the Python standard library. No `pip install` is needed. The `codex` CLI is optional and disabled by default.
 
-**Windows is a preview.** Native Windows is supported in the same release, but it has not been verified end to end in a real session. CI (`windows-latest`) only proves that the Python code runs. For Claude Code, install Git for Windows (the hooks run through Git Bash). Windows does not come with Python. Install it with `winget install Python.Python.3.12`, or check that `py -3 --version` responds. On the owner's PC (2026-10-04), `tools/smoke_fresh_clone.py` confirmed a Korean-named user folder, paths with spaces, the 7 hooks, and the Codex layer install; a real Claude Code session calling the hooks has not been observed yet. On Windows, when Claude Code runs shell commands through its `PowerShell` tool, the same rules as the bash gate apply (the powershell gate, ADR-0028). WSL behaves the same as Linux.
+**Windows is a preview.** Native Windows is supported in the same release, but it has not been verified end to end in a real session. CI (`windows-latest`) only proves that the Python code runs. For Claude Code, Git for Windows is required (the hooks run through Git Bash; without it Claude Code blocks every tool call a `PreToolUse` hook guards, see the table). Windows does not come with Python. Install it with `winget install Python.Python.3.12`, or check that `py -3 --version` responds. On the owner's PC (2026-10-04), `tools/smoke_fresh_clone.py` confirmed a Korean-named user folder, paths with spaces, the 7 hooks, and the Codex layer install; a real Claude Code session calling the hooks has not been observed yet. On Windows, when Claude Code runs shell commands through its `PowerShell` tool, the same rules as the bash gate apply (the powershell gate, ADR-0028). WSL behaves the same as Linux.
 
 ## Windows from scratch
 

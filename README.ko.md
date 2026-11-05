@@ -44,19 +44,30 @@ gatebound는 [Claude Code](https://claude.com/claude-code)와 Codex에서 AI 보
 
 - **유료 플랜의 Claude Code** — Claude Code는 무료 플랜에 포함되지 않습니다.
   또는 Codex 앱·CLI([Codex](#codex-앱과-cli) 참고).
-- **Python 3.9 이상**, `python3`·`python`·`py -3` 중 하나로 실행되면
-  됩니다 — 훅이 이 순서로 각 이름을 확인한 뒤 첫 진짜 파이썬으로 실행합니다.
-  Windows에서는 직접 설치해야 합니다(`winget install Python.Python.3.12`).
-  Windows가 기본으로 깔아 두는 `python`/`python3`는 Microsoft Store 안내용
-  자리표시자이지 파이썬이 아니며, `doctor`가 보이면 경고합니다. 그 외에
-  필요한 것은 없습니다 — gatebound는 표준 라이브러리만 쓰고 `pip install`
-  단계가 없습니다.
+- **Python 3.9 이상과 git — 직접 설치해야 합니다.** gatebound가 깔아 주지
+  않습니다. 파이썬은 `python3`·`python`·`py -3` 중 하나로 실행되면 됩니다 —
+  훅이 이 순서로 각 이름을 확인한 뒤 첫 진짜 파이썬으로 실행합니다.
+  macOS는 `xcode-select --install`이 둘 다 설치합니다(`git --version`이
+  설치를 물으면 그때 실행). Debian/Ubuntu는 `sudo apt install -y git python3`,
+  Windows는 아래 한 줄 설치가 넣어 줍니다. Windows가 기본으로 깔아 두는
+  `python`/`python3`는 Microsoft Store 안내용 자리표시자이지 파이썬이 아니며,
+  `doctor`가 보이면 경고합니다. gatebound 자체에는 그 외에 필요한 것이
+  없습니다 — 표준 라이브러리만 쓰고 `pip install` 단계가 없습니다.
+- **Windows: Claude Code에는 Git for Windows(Git Bash)가 필수입니다.**
+  Claude Code 2.1.299부터는 셸을 지정하지 않은 `PreToolUse` 훅(gatebound의
+  훅이 그렇습니다)이 Git for Windows가 없으면 도구 호출을 막습니다. 그래서
+  Git이 없으면 파일 쓰기와 셸 명령이 전부 거부됩니다. 아래 Windows 설치
+  스크립트가 설치해 줍니다.
+- **화면이 있는 프로젝트: 세션 전에 Playwright 브라우저를 받아 두세요.**
+  웹 앱 검증은 E2E 테스트를 실제 브라우저로 돌리고, 처음 받을 때 용량이
+  큽니다(수백 MB). Node.js LTS를 설치한 뒤 프로젝트 폴더에서 한 번
+  `npx playwright install chromium`을 실행하세요.
 - **Windows (미리보기).** 같은 릴리스에서 네이티브 Windows를 지원하지만,
   아직 실제 세션을 끝까지 돌려본 사용자가 없습니다. CI는 `windows-latest`에서
   파이썬 코드가 도는 것까지만 증명하고, 호스트가 훅을 실제로 부르는지는
-  증명하지 못합니다. Claude Code에서는 Git for Windows를 설치하십시오
-  (그러면 Claude Code가 Git Bash로 훅을 실행합니다). Claude Code가 셸
-  명령을 `PowerShell` 도구로 실행해도 Bash와 같은 규칙이 적용됩니다
+  증명하지 못합니다. 아무것도 깔리지 않은 PC는 매뉴얼의 Windows 안내
+  (`docs/manual/02-install.md`, "Windows에서 처음부터")를 따르세요. Claude
+  Code가 셸 명령을 `PowerShell` 도구로 실행해도 Bash와 같은 규칙이 적용됩니다
   (powershell 게이트, ADR-0028). WSL에서도 리눅스와 똑같이 동작합니다.
   실제 Windows 사용 보고를 환영합니다.
 

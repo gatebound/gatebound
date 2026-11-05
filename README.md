@@ -47,22 +47,33 @@ that matter into things a hook enforces:
 
 - **Claude Code** on a paid plan (Claude Code is not part of the free tier),
   or Codex (app or CLI) — see [Codex](#codex-app-and-cli) below.
-- **Python 3.9 or newer**, reachable as `python3`, `python` or `py -3` —
+- **Python 3.9 or newer and git, installed by you.** gatebound does not
+  install them. Python must be reachable as `python3`, `python` or `py -3` —
   each hook probes them in that order and runs under the first real one.
-  On Windows, install it yourself (`winget install Python.Python.3.12`): the
-  `python`/`python3` a stock Windows ships are Microsoft Store placeholders,
-  not interpreters, and `doctor` warns when it sees them. Nothing else is
-  needed: gatebound is standard library only, with no `pip install` step.
+  On macOS, `xcode-select --install` provides both (run it if
+  `git --version` asks); on Debian/Ubuntu, `sudo apt install -y git python3`;
+  on Windows the one-line installer below adds them. The `python`/`python3`
+  a stock Windows ships are Microsoft Store placeholders, not interpreters,
+  and `doctor` warns when it sees them. Nothing else is needed for gatebound
+  itself: it is standard library only, with no `pip install` step.
+- **Windows: Git for Windows (Git Bash) is required for Claude Code.** Since
+  Claude Code 2.1.299, a `PreToolUse` hook that names no shell — gatebound's
+  hooks are such hooks — blocks the tool call when Git for Windows is
+  missing, so without it every file write and shell command is refused.
+  The Windows installer below installs it.
+- **Projects with screens: download Playwright's browser before the
+  session.** Verifying a web app runs its E2E tests in a real browser, and
+  the first download is large (a few hundred MB). With Node.js LTS
+  installed, run this once in the project folder:
+  `npx playwright install chromium`.
 - **Windows (preview).** Native Windows is supported in the same release,
   but no participant has run a full session on it yet; CI proves the Python
-  code on `windows-latest`, not that a host calls the hooks there. For
-  Claude Code, follow the Windows walkthrough in the manual
-  (`docs/manual/en/02-install.md`, "Windows from scratch": Git, Python, Claude
-  Code, then the plugin) — install Git for Windows (Claude Code then runs hooks through
-  Git Bash). Shell commands Claude Code runs through its `PowerShell` tool
-  meet the same rules as Bash (the powershell gate, ADR-0028). WSL also
-  works and behaves like any Linux host. A report from a real Windows
-  session is welcome.
+  code on `windows-latest`, not that a host calls the hooks there. The
+  manual's Windows walkthrough (`docs/manual/en/02-install.md`, "Windows
+  from scratch") covers a PC with nothing installed. Shell commands Claude
+  Code runs through its `PowerShell` tool meet the same rules as Bash (the
+  powershell gate, ADR-0028). WSL also works and behaves like any Linux
+  host. A report from a real Windows session is welcome.
 
 ## Install
 

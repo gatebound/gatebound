@@ -5,12 +5,15 @@
 | 항목 | 조건 | 확인 방법 |
 |---|---|---|
 | Python | 3.9 이상을 **직접 설치**한다. 훅은 `python3` → `python` → `py -3` 순으로, 각 이름이 진짜 파이썬 3.9+인지 조용히 확인한 뒤에만 실행한다(ADR-0030). Windows가 기본으로 깔아 두는 `python`/`python3`는 Microsoft Store 안내용 자리표시자이지 파이썬이 아니다 | doctor 7번 축. 자리표시자가 PATH에 있으면 `warn` |
+| git | **직접 설치**한다. macOS: `xcode-select --install`(git과 `python3`를 함께 설치), Debian/Ubuntu: `sudo apt install -y git python3`, Windows: Git for Windows(아래) | `git --version` |
+| Git for Windows (Windows만) | **Windows의 Claude Code에는 필수다.** Claude Code 2.1.299부터 셸을 지정하지 않은 `PreToolUse` 훅(gatebound의 훅이 그렇다)은 Git for Windows가 없으면 도구 호출을 막는다. Git Bash가 없으면 파일 쓰기와 셸 명령이 전부 거부된다. 설치 스크립트가 설치한다 | PowerShell에서 `git --version` |
+| Playwright 브라우저 | 화면이 있는 프로젝트: verify의 E2E 테스트는 실제 브라우저로 돌고, 처음 받을 때 용량이 크다(수백 MB). 세션 전에 프로젝트 폴더에서 `npx playwright install chromium`으로 받아 둔다(Node.js 필요) | 명령이 오류 없이 끝난다 |
 | `claude` CLI | PATH에 있어야 함 | doctor 6번 축 |
 | Claude Code | 플러그인 설치·활성화 가능한 버전 | doctor 2번 축 |
 
 gatebound 커널은 파이썬 표준 라이브러리만 쓴다. `pip install`이 필요 없다. `codex` CLI는 선택이며 기본적으로 비활성이다.
 
-**Windows는 미리보기다.** 같은 릴리스에서 네이티브 Windows를 지원하지만 실제 세션으로 끝까지 검증되지 않았다. CI(`windows-latest`)는 파이썬 코드가 도는 것까지만 증명한다. Claude Code에서는 Git for Windows를 설치한다(훅이 Git Bash로 실행된다). 파이썬은 Windows에 기본으로 없다. `winget install Python.Python.3.12`로 설치하거나 `py -3 --version`이 응답하는지 확인한다. 소유자 PC(2026-10-04)에서 `tools/smoke_fresh_clone.py`로 한글 사용자 폴더·공백 경로·훅 7종·Codex 층 설치까지 확인했고, Claude Code 실세션이 훅을 부르는 것은 아직 관측하지 못했다. Windows에서 Claude Code가 셸 명령을 `PowerShell` 도구로 실행해도 bash 게이트와 같은 규칙이 적용된다(powershell 게이트, ADR-0028). WSL에서는 리눅스와 같다.
+**Windows는 미리보기다.** 같은 릴리스에서 네이티브 Windows를 지원하지만 실제 세션으로 끝까지 검증되지 않았다. CI(`windows-latest`)는 파이썬 코드가 도는 것까지만 증명한다. Claude Code에서는 Git for Windows가 필수다(훅이 Git Bash로 실행되고, 없으면 Claude Code가 `PreToolUse` 훅이 지키는 도구 호출을 전부 막는다. 위 표 참고). 파이썬은 Windows에 기본으로 없다. `winget install Python.Python.3.12`로 설치하거나 `py -3 --version`이 응답하는지 확인한다. 소유자 PC(2026-10-04)에서 `tools/smoke_fresh_clone.py`로 한글 사용자 폴더·공백 경로·훅 7종·Codex 층 설치까지 확인했고, Claude Code 실세션이 훅을 부르는 것은 아직 관측하지 못했다. Windows에서 Claude Code가 셸 명령을 `PowerShell` 도구로 실행해도 bash 게이트와 같은 규칙이 적용된다(powershell 게이트, ADR-0028). WSL에서는 리눅스와 같다.
 
 ## Windows에서 처음부터
 
