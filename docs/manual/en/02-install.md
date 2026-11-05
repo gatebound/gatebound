@@ -154,11 +154,11 @@ After restarting, always run the diagnosis.
 
 | # | Axis | What it checks | Fix when `fail` |
 |---|---|---|---|
-| 1 | plugin files | Do `plugin.json`, `hooks.json` and the 9 gate scripts (prompt, write, bash, powershell, skill, spawn, question, compact, stop) exist and are they non-empty? | `/plugin install gatebound` — if a script is missing, that gate never fires at all |
+| 1 | plugin files | Do `plugin.json`, `hooks.json` and the 9 gate scripts (prompt, write, bash, powershell, skill, spawn, question, compact, stop) exist and are they non-empty? | `/plugin install gatebound@gatebound` — if a script is missing, that gate never fires at all |
 | 2 | hooks registered | Is it listed in `installed_plugins.json` and enabled in `enabledPlugins` of `settings.json`? | `/plugin enable gatebound@gatebound` |
 | 3 | project state | Do `.gatebound/config.json` and `approvals.json` parse? `warn` if something is already listening on the `webServer` port of a Playwright config (`playwright.config.{ts,js,mjs,cjs}`, including under `spec/design/e2e/`) (the `port:`/`url:` numbers inside the braces or brackets of a `webServer:`, `'webServer':` or `const webServer: Type =` value, with comments removed, and the default after `\|\|` as in `process.env.PORT \|\| 3000`; this is a simple scan, not a parser, so a port given only through a variable is not found). On POSIX, if `lsof` is available, it records that process's PID, command and working directory, and whether it is inside or outside this project (ADR-0026) | Edit or delete the file by hand. For a port conflict, stop that process yourself or change the port. doctor terminates nothing |
 | 4 | spec set | The `spec validate` verdict | Go to the pipeline that owns the failing file |
-| 5 | contract freshness | Does `source_sha256` in `.gatebound/contract.json` match `05-gate.md`? | Run `contract derive` again |
+| 5 | contract freshness | Does `source_sha256` in `.gatebound/contract.json` match `05-gate.md`? | Run `contract derive` again. With no `05-gate.md` yet, `/gatebound:gate` |
 | 6 | workers | Is the default backend binary on PATH? | Install that CLI, or `workers set-default <name>` |
 | 7 | python | Is the interpreter 3.9 or newer? | Install Python 3.9 or newer |
 | 8 | host layer | If there is a `.codex/hooks.json` for Codex, do the gate scripts in it actually exist (`ok` if there is none)? `warn` if installed as a Codex plugin with no hook trust record | If the layer is broken, `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" install --host codex`; if there is no trust, in a terminal `codex` → `/hooks` |
@@ -170,6 +170,8 @@ After restarting, always run the diagnosis.
 - Axis 4: the project has no `spec/` directory. You have not run `/gatebound:interview`.
 - Axis 5: there is no `.gatebound/contract.json` yet. You have not run `/gatebound:gate`.
 - Axis 6: the binary exists but the `--version` probe did not respond. Builds still run.
+
+In a new folder axes 3, 4 and 5 are `unverified`, so the first line says `unverified` too, and nothing is broken. In that case a line follows it: `next: not started yet — run /gatebound:setup, then /gatebound:discover` (with only `.gatebound/`, `next: set up, no spec yet — run /gatebound:discover`). Axis 3's fix is `/gatebound:setup`, and axis 5's is `/gatebound:gate` while there is no `05-gate.md`.
 
 Do not summarize `unverified` as "no problems". It means it was not checked.
 

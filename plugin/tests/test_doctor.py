@@ -143,7 +143,7 @@ class TestAxisPluginFiles(DoctorTestCase):
             paths.plugin_root = original
         self.assertEqual(result["verdict"], verdict.FAIL)
         self.assertIn(doctor.GATE_SCRIPTS[-1], result["detail"])
-        self.assertTrue(result["fix"])
+        self.assertTrue(result["fix"].endswith("/plugin install gatebound@gatebound"))
 
     def test_empty_gate_script_fails_axis_1(self) -> None:
         fake_plugin = self.root / "fakeplugin2"
@@ -221,7 +221,11 @@ class TestAxisHooksRegistered(DoctorTestCase):
         self.install_manifest(False)
         result = doctor.axis_hooks_registered(self.root)
         self.assertEqual(result["verdict"], verdict.FAIL)
-        self.assertIn("install", result["fix"])
+        self.assertEqual(result["fix"], "/plugin install gatebound@gatebound")
+
+    def test_no_install_manifest_fix_names_the_marketplace(self) -> None:
+        result = doctor.axis_hooks_registered(self.root)
+        self.assertEqual(result["fix"], "/plugin install gatebound@gatebound")
 
     def test_unparseable_manifest_is_unverified(self) -> None:
         directory = self.home / ".claude" / "plugins"
@@ -248,6 +252,11 @@ class TestAxisProjectState(DoctorTestCase):
     def test_no_state_dir_is_unverified(self) -> None:
         shutil.rmtree(self.root / ".gatebound")
         self.assertEqual(doctor.axis_project_state(self.root)["verdict"], verdict.UNVERIFIED)
+
+    def test_no_state_dir_fix_is_the_setup_command(self) -> None:
+        shutil.rmtree(self.root / ".gatebound")
+        result = doctor.axis_project_state(self.root)
+        self.assertEqual(result["fix"], "/gatebound:setup")
 
     def test_corrupt_config_json_fails(self) -> None:
         (self.root / ".gatebound" / "config.json").write_text("{oops", encoding="utf-8")
@@ -714,9 +723,19 @@ class TestAxisContractFreshness(DoctorTestCase):
 
     def test_absent_contract_is_unverified(self) -> None:
         self._patch_status(lambda root: verdict.UNVERIFIED)
+        (self.root / "spec").mkdir()
+        (self.root / "spec" / "05-gate.md").write_text("# Gate\n", encoding="utf-8")
         result = doctor.axis_contract_freshness(self.root)
         self.assertEqual(result["verdict"], verdict.UNVERIFIED)
         self.assertIn("derive", result["fix"])
+
+    def test_no_gate_file_points_at_the_gate_command(self) -> None:
+        """Before 05-gate.md exists there is nothing to derive: the fix is the
+        pipeline command, not the raw CLI."""
+        self._patch_status(lambda root: verdict.UNVERIFIED)
+        result = doctor.axis_contract_freshness(self.root)
+        self.assertEqual(result["verdict"], verdict.UNVERIFIED)
+        self.assertEqual(result["fix"], "/gatebound:gate")
 
     def test_fresh_contract_is_ok(self) -> None:
         self._patch_status(lambda root: verdict.OK)
@@ -805,6 +824,43 @@ class TestCli(DoctorTestCase):
         finally:
             doctor.diagnose = original
         self.assertEqual(code, 0)
+
+    def _table(self) -> str:
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            doctor.run(["--root", str(self.root)])
+        return buf.getvalue()
+
+    def test_not_started_project_gets_a_plain_next_step(self) -> None:
+        """A fresh folder is not broken: the verdict stays honest (unverified
+        is never rounded to ok) and a next-step line says what to run."""
+        shutil.rmtree(self.root / ".gatebound")
+        lines = self._table().splitlines()
+        self.assertTrue(lines[0].startswith("gatebound doctor — "))
+        self.assertNotIn("— ok", lines[0])
+        self.assertEqual(lines[1],
+                         "  next: not started yet — run /gatebound:setup, then /gatebound:discover")
+
+    def test_set_up_project_without_spec_points_at_discover(self) -> None:
+        lines = self._table().splitlines()
+        self.assertEqual(lines[1], "  next: set up, no spec yet — run /gatebound:discover")
+
+    def test_started_project_has_no_next_step_line(self) -> None:
+        (self.root / "spec").mkdir()
+        self.assertNotIn("next:", self._table())
+
+    def test_json_output_is_unchanged_by_the_next_step(self) -> None:
+        import contextlib
+        import io
+
+        shutil.rmtree(self.root / ".gatebound")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            doctor.run(["--json", "--root", str(self.root)])
+        self.assertEqual(sorted(json.loads(buf.getvalue())), ["axes", "verdict"])
 
     def test_table_output_shows_fixes(self) -> None:
         import contextlib

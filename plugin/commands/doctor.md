@@ -57,6 +57,10 @@ State the aggregate verdict once, at the top. It is `fail` if any axis failed,
 otherwise `unverified` if any axis is unverified, otherwise `warn`, otherwise
 `ok`.
 
+When the output has a `next:` line under the headline, the project has not
+started the pipeline yet: say so plainly in `output_lang` (a new folder, not a
+broken one) and give that next step. The verdict stays as printed.
+
 ## Step 3 — offer the fixes
 
 Each axis carries a `fix` string: a copy-pasteable command, or empty. For every

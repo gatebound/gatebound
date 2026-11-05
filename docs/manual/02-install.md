@@ -154,11 +154,11 @@ python3 "gatebound/plugin/bin/gatebound.py" install --host codex
 
 | # | 축 | 무엇을 보는가 | `fail`일 때 처방 |
 |---|---|---|---|
-| 1 | plugin files | `plugin.json`, `hooks.json`, 게이트 스크립트 9개(prompt·write·bash·powershell·skill·spawn·question·compact·stop)가 존재하고 비어 있지 않은가 | `/plugin install gatebound` — 스크립트가 없으면 그 게이트는 아예 발화하지 않는다 |
+| 1 | plugin files | `plugin.json`, `hooks.json`, 게이트 스크립트 9개(prompt·write·bash·powershell·skill·spawn·question·compact·stop)가 존재하고 비어 있지 않은가 | `/plugin install gatebound@gatebound` — 스크립트가 없으면 그 게이트는 아예 발화하지 않는다 |
 | 2 | hooks registered | `installed_plugins.json`에 등재되고 `settings.json`의 `enabledPlugins`에서 활성인가 | `/plugin enable gatebound@gatebound` |
 | 3 | project state | `.gatebound/config.json`과 `approvals.json`이 파싱되는가. Playwright 설정(`playwright.config.{ts,js,mjs,cjs}`, `spec/design/e2e/` 아래 포함)의 `webServer` 포트(`webServer:`·`'webServer':`·`const webServer: 타입 =` 값의 중괄호·대괄호 안에서 주석을 뺀 `port:`·`url:` 숫자와 `process.env.PORT \|\| 3000` 같은 `\|\|` 뒤 기본값. 파서가 아니라 간단한 스캔이므로 변수로만 지정한 포트는 못 찾음)에 이미 무언가 떠 있으면 `warn`. POSIX에서 `lsof`가 있으면 그 프로세스의 PID·명령·작업 디렉터리와 이 프로젝트 안인지 밖인지를 적는다(ADR-0026) | 해당 파일을 손으로 고치거나 삭제한다. 포트 충돌이면 그 프로세스를 직접 멈추거나 포트를 바꾼다. doctor는 아무것도 종료하지 않는다 |
 | 4 | spec set | `spec validate` 판정 | 실패한 파일을 소유한 파이프라인으로 간다 |
-| 5 | contract freshness | `.gatebound/contract.json`의 `source_sha256`가 `05-gate.md`와 일치하는가 | `contract derive` 재실행 |
+| 5 | contract freshness | `.gatebound/contract.json`의 `source_sha256`가 `05-gate.md`와 일치하는가 | `contract derive` 재실행. `05-gate.md`가 아직 없으면 `/gatebound:gate` |
 | 6 | workers | 기본 백엔드 바이너리가 PATH에 있는가 | 해당 CLI를 설치하거나 `workers set-default <name>` |
 | 7 | python | 인터프리터가 3.9 이상인가 | 파이썬 3.9 이상 설치 |
 | 8 | host layer | Codex용 `.codex/hooks.json`이 있으면 그 안의 게이트 스크립트가 실제로 존재하는가(없으면 `ok`). Codex 플러그인으로 설치됐는데 훅 신뢰 기록이 없으면 `warn` | 층이 깨졌으면 `python3 "${CLAUDE_PLUGIN_ROOT}/bin/gatebound.py" install --host codex`, 신뢰가 없으면 터미널에서 `codex` → `/hooks` |
@@ -170,6 +170,8 @@ python3 "gatebound/plugin/bin/gatebound.py" install --host codex
 - 4번 축: 프로젝트에 `spec/` 디렉터리가 없다. `/gatebound:interview` 전이다.
 - 5번 축: `.gatebound/contract.json`이 아직 없다. `/gatebound:gate` 전이다.
 - 6번 축: 바이너리는 있으나 `--version` 프로브가 응답하지 않았다. 빌드는 돌아간다.
+
+새 폴더에서는 3·4·5번 축이 `unverified`라 첫 줄도 `unverified`지만 고장이 아니다. 그때는 첫 줄 아래에 `next: not started yet — run /gatebound:setup, then /gatebound:discover`(`.gatebound/`만 있으면 `next: set up, no spec yet — run /gatebound:discover`)가 붙는다. 3번 축의 처방은 `/gatebound:setup`, 5번 축은 `05-gate.md`가 없으면 `/gatebound:gate`다.
 
 `unverified`를 "이상 없음"으로 요약하면 안 된다. 검사하지 않았다는 뜻이다.
 

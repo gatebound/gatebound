@@ -27,6 +27,10 @@ EXPECTED_HOOK_EVENTS = ("UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop")
 
 MIN_PYTHON = (3, 9)
 
+#: The install command a fix names: the plugin key with its marketplace, which
+#: is what `/plugin install` resolves without asking which marketplace.
+INSTALL_FIX = "/plugin install gatebound@gatebound"
+
 
 def _axis(name, v, detail, fix=""):
     return {"axis": name, "verdict": v, "detail": detail, "fix": fix}
@@ -57,7 +61,7 @@ def axis_plugin_files(root) -> dict:
         return _axis(
             "plugin files", verdict.FAIL,
             "missing or empty: %s" % ", ".join(missing),
-            "reinstall the plugin: /plugin install gatebound",
+            "reinstall the plugin: " + INSTALL_FIX,
         )
     return _axis("plugin files", verdict.OK,
                  "plugin.json, hooks.json and %d gate scripts present" % len(GATE_SCRIPTS))
@@ -195,7 +199,7 @@ def axis_hooks_registered(root) -> dict:
         return _axis("hooks registered", verdict.UNVERIFIED,
                      "no installed_plugins.json under ~/.claude/plugins; "
                      "running from a source checkout?",
-                     "/plugin install gatebound")
+                     INSTALL_FIX)
     try:
         data = _read_json(path)
     except (OSError, ValueError) as exc:
@@ -209,7 +213,7 @@ def axis_hooks_registered(root) -> dict:
         return _axis("hooks registered", verdict.FAIL,
                      "gatebound is not listed in installed_plugins.json; "
                      "hooks will not fire",
-                     "/plugin install gatebound")
+                     INSTALL_FIX)
 
     # Installed is not enabled. A disabled plugin has files on disk and no
     # hooks firing — the state that looks healthy while enforcing nothing.
@@ -255,7 +259,7 @@ def axis_project_state(root) -> dict:
     if not state.is_dir():
         return _axis("project state", verdict.UNVERIFIED,
                      "no %s/ in this project yet" % state.name,
-                     paths.cli_invocation() + " doctor --root <project>  # after /gatebound:setup")
+                     "/gatebound:setup")
     problems = []
     warnings = []
     cfg = state / "config.json"
@@ -794,9 +798,13 @@ def axis_contract_freshness(root) -> dict:
         return _axis("contract freshness", verdict.OK,
                      "%s/contract.json matches spec/05-gate.md" % state)
     if v == verdict.UNVERIFIED:
+        # No 05-gate.md means there is nothing to derive yet: the step that
+        # writes it (and derives the contract on approval) is /gatebound:gate.
+        has_gate = (paths.spec_dir(root) / "05-gate.md").is_file()
         return _axis("contract freshness", verdict.UNVERIFIED,
                      "no %s/contract.json yet" % state,
-                     paths.cli_invocation() + " contract derive")
+                     (paths.cli_invocation() + " contract derive") if has_gate
+                     else "/gatebound:gate")
     try:
         changed = contract_mod.stale_inputs(root)
     except Exception:  # noqa: BLE001 — a diagnosis must never crash doctor
@@ -927,6 +935,24 @@ def diagnose(root) -> dict:
 # --------------------------------------------------------------------------- CLI
 
 
+def next_step(root) -> str:
+    """A plain next step for a project the pipeline has not reached yet.
+
+    The verdict of such a project stays `unverified` (nothing to check is not
+    a pass); this line only says that is the normal state of a new folder and
+    what to run. Empty once a spec/ exists, where the axes say the rest.
+    """
+    try:
+        if paths.spec_dir(root).is_dir():
+            return ""
+        if not names.existing_state_dirs(root):
+            return "not started yet — run /gatebound:setup, then /gatebound:discover"
+        return "set up, no spec yet — run /gatebound:discover"
+    except Exception:  # noqa: BLE001 — a hint must never crash doctor
+        return ""
+
+
+
 def run(argv: list) -> int:
     argv = list(argv)
     root_arg = None
@@ -941,6 +967,9 @@ def run(argv: list) -> int:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     else:
         print("gatebound doctor — %s (root: %s)" % (report["verdict"], root))
+        hint = next_step(root)
+        if hint:
+            print("  next: %s" % hint)
         for axis in report["axes"]:
             print("  %d. %-11s %-10s %s" % (
                 axis["n"], axis["verdict"], axis["axis"], axis["detail"]))
