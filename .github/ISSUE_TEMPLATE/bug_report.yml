@@ -47,6 +47,16 @@ body:
     validations:
       required: true
   - type: input
+    id: host_version
+    attributes:
+      label: Host version / 호스트 버전
+      description: |
+        The output of `claude --version` (Claude Code) or `codex --version` (Codex CLI). For a desktop app, its version from the About window.
+        Claude Code는 `claude --version`, Codex CLI는 `codex --version`의 출력을 붙여 주세요.
+      placeholder: "2.1.318 (Claude Code)"
+    validations:
+      required: true
+  - type: input
     id: os
     attributes:
       label: Operating system

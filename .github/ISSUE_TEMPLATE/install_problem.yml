@@ -1,0 +1,83 @@
+name: Install problem / 설치 문제
+description: gatebound, Claude Code or Codex would not install, or doctor does not run. 설치가 안 되거나 doctor가 실행되지 않을 때.
+title: "[install] "
+labels: ["install"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you paste anything below, **remove secrets, tokens and personal paths** (for example your home directory).
+        한국어로 작성하셔도 됩니다. 붙여 넣기 전에 비밀값·토큰·개인 경로(예: 사용자 폴더 이름)를 지워 주세요.
+
+        The install steps are in the manual: `docs/manual/en/02-install.md` (한국어: `docs/manual/02-install.md`).
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system / 운영체제
+      options:
+        - Windows 11
+        - Windows 10
+        - Windows (WSL)
+        - macOS
+        - Linux
+        - other / 기타
+    validations:
+      required: true
+  - type: input
+    id: os_version
+    attributes:
+      label: OS version / 운영체제 버전
+      placeholder: "macOS 15.6 / Ubuntu 24.04 / Windows 11 24H2"
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host / 호스트
+      options:
+        - Claude Code CLI
+        - Claude desktop app
+        - Codex CLI
+        - Codex app
+    validations:
+      required: true
+  - type: input
+    id: host_version
+    attributes:
+      label: Host version / 호스트 버전
+      description: |
+        `claude --version` or `codex --version`. If the command is not found, write "not installed".
+        `claude --version` 또는 `codex --version`의 출력. 명령을 찾지 못하면 "not installed"라고 적어 주세요.
+      placeholder: "2.1.318 (Claude Code)"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact install command you ran / 실행한 설치 명령 그대로
+      description: Copy it as you typed it, one command per line. 입력한 그대로, 한 줄에 한 명령씩.
+      placeholder: |
+        claude plugin marketplace add gatebound/gatebound
+        claude plugin install gatebound@gatebound
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Its full output / 그 명령의 전체 출력
+      description: Everything the terminal printed, including the error. 오류를 포함해 터미널에 나온 전부.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of /gatebound:doctor, if it runs / doctor 출력 (실행된다면)
+      description: |
+        In the project folder: run `claude`, then type `/gatebound:doctor` (Codex: `$gatebound-doctor`). Leave empty if it does not run.
+        프로젝트 폴더에서 `claude`를 실행하고 `/gatebound:doctor`를 입력한 결과. 실행되지 않으면 비워 두세요.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else / 기타
+      description: Python and git versions (`python3 --version`, `git --version`; Windows `py -3 --version`), screenshots. 파이썬·git 버전, 스크린샷 등.
