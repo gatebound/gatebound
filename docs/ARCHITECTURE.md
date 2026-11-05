@@ -104,7 +104,7 @@ gatebound/
 ├── examples/<name>/                     # complete sample projects (spec/ + the code a real build produced); copied out to run, never imported by plugin/ or tools/
 ├── docs/
 │   ├── ARCHITECTURE.md (this), QUICKSTART.md, decisions/ADR-*.md
-│   ├── manual/                          # the user manual (Korean today; English planned for 0.17.0)
+│   ├── manual/                          # the user manual (Korean, English under en/)
 │   ├── assets/                          # manual diagrams (.svg sources and .png renders)
 │   └── retros/                          # write-ups of trial builds
 ├── .github/workflows/ci.yml
