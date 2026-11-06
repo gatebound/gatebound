@@ -11,8 +11,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.9", "3.12"]
+        python-version: ["3.12"]
         include:
+          # ubuntu-latest moved to 26.04 (2026-11), which has no prebuilt
+          # Python 3.9; the oldest supported Python is proven on 24.04.
+          - os: ubuntu-24.04
+            python-version: "3.9"
           # ADR-0019: Windows support is a preview; this proves the Python
           # code on Windows, not that a host calls the hooks there.
           - os: windows-latest
