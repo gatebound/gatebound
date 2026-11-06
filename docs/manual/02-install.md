@@ -132,7 +132,7 @@ Windows에서 Codex를 처음부터 준비하는 순서는 이렇다.
 
 1. PowerShell(관리자 아님)에서 위의 Codex 한 줄 설치를 실행한다. 결과표의 `codex-hooks` 줄에 이 PC에 맞는 `install --host codex` 명령이 나온다.
 2. 프로젝트 폴더에서 그 명령을 실행한다. `.codex/hooks.json`, `.agents/skills/gatebound-*`, `AGENTS.md` 관리 블록이 생긴다.
-3. 같은 폴더에서 `codex`를 실행한다(`os error 5`로 멈추면 `codex --no-daemon`). `/hooks`를 입력하고, 새 훅(`[!] … new`)마다 `t`를 눌러 신뢰한다. 이미 신뢰한 훅(`[x]`)에서 Space나 Enter를 누르면 신뢰가 풀리니 주의한다.
+3. 같은 폴더에서 `codex`를 실행한다(`os error 5`로 멈추면 `codex --no-daemon`). `/hooks`를 입력하고, 새 훅(`[!] … new`)마다 `t`를 눌러 신뢰한다. 이미 신뢰한 훅(`[x]`)에서 Space나 Enter를 누르면 신뢰가 풀리니 주의한다. Codex 0.167 이후는 시작할 때 "Hooks need review"를 먼저 묻는데, 거기서 **Trust all and continue**를 고르면 같은 훅이 신뢰된다.
 4. `/quit`로 나가 `codex`를 다시 실행한다. 신뢰는 새 세션부터 적용된다.
 5. gatebound를 업데이트하면 2~4를 다시 한다. 훅 내용이 바뀌면 신뢰도 새로 해야 한다.
 

@@ -132,7 +132,7 @@ To set up Codex on Windows from scratch, follow these steps.
 
 1. In PowerShell (not as administrator), run the one-line Codex install above. The `codex-hooks` row of the result table shows the `install --host codex` command for this PC.
 2. Run that command in your project folder. It creates `.codex/hooks.json`, `.agents/skills/gatebound-*`, and a managed block in `AGENTS.md`.
-3. Run `codex` in the same folder (if it stops with `os error 5`, use `codex --no-daemon`). Type `/hooks`, and press `t` on each new hook (`[!] … new`) to trust it. Be careful: pressing Space or Enter on an already trusted hook (`[x]`) removes the trust.
+3. Run `codex` in the same folder (if it stops with `os error 5`, use `codex --no-daemon`). Type `/hooks`, and press `t` on each new hook (`[!] … new`) to trust it. Be careful: pressing Space or Enter on an already trusted hook (`[x]`) removes the trust. Codex 0.167 and later ask at startup instead ("Hooks need review"); choosing **Trust all and continue** there trusts the same hooks.
 4. Exit with `/quit` and run `codex` again. Trust applies from the new session.
 5. When you update gatebound, repeat steps 2–4. When hook content changes, trust has to be given again.
 

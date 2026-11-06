@@ -175,7 +175,8 @@ Windows 문제(가짜 Python, 갱신 안 된 PATH, cp949, PowerShell로 실행�
 마지막 `codex-hooks` 줄은 Codex를 쓰는 프로젝트마다 두 가지를 하기 전까지
 `warn`으로 남습니다. 그 줄에 나온 `install --host codex` 명령을 실행하고,
 `codex`를 실행해(`os error 5`로 멈추면 `codex --no-daemon`) `/hooks`에서
-gatebound 훅마다 `t`를 누른 뒤 새 세션을 여세요. gatebound를 업데이트할 때마다
+gatebound 훅마다 `t`를 누른 뒤 새 세션을 여세요. Codex 0.167 이후는 시작할 때
+"Hooks need review"를 먼저 묻는데, 거기서 **Trust all and continue**를 골라도 같습니다. gatebound를 업데이트할 때마다
 두 가지를 다시 합니다.
 
 **Claude 데스크톱 앱.** 앱에서도 플러그인이 동작하고, 훅도 CLI와 똑같이

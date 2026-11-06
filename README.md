@@ -183,7 +183,8 @@ Its last row, `codex-hooks`, stays `warn` until you do two things in each
 project where you use Codex: run the `install --host codex` command that
 row prints, then run `codex` (`codex --no-daemon` if it stops with
 `os error 5`), type `/hooks`, press `t` on each gatebound hook and start a new
-session. Repeat both after each gatebound update.
+session. Codex 0.167 and later ask by themselves at startup ("Hooks need
+review"); choosing **Trust all and continue** there does the same. Repeat both after each gatebound update.
 
 **Claude desktop app.** Plugins work there too, and hooks run as in the CLI:
 click **+ → Plugins → Add plugin**, add the marketplace
